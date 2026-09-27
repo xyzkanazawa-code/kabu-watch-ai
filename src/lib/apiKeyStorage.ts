@@ -63,11 +63,12 @@ export async function validateApiKey(apiKey: string): Promise<{
     return { valid: false, error: 'APIキーが入力されていません。' };
   }
 
-  // AIzaSy で始まるGoogle APIキーの形式チェック
-  if (!trimmed.startsWith('AIzaSy')) {
+  // Google APIキーの形式チェック（従来の AIzaSy または 最新の AQ. や英数字）
+  const isValidFormat = trimmed.startsWith('AIzaSy') || trimmed.startsWith('AQ.') || trimmed.length >= 25;
+  if (!isValidFormat) {
     return {
       valid: false,
-      error: 'キーの形式が正しくありません。「AIzaSy」から始まるGoogle APIキーを入力してください。',
+      error: 'キーの形式が正しくありません。Google AI StudioでコピーしたAPIキーを入力してください。',
     };
   }
 

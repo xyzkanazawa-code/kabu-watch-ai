@@ -235,7 +235,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSuc
                       setApiKey(e.target.value);
                       setTestResult(null);
                     }}
-                    placeholder="AIzaSy..."
+                    placeholder="AQ.Ab8... または AIzaSy..."
                     className="w-full bg-gray-950 border border-gray-700 rounded-xl px-3.5 py-2.5 pr-20 text-xs sm:text-sm font-mono text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
                   />
                   <div className="absolute right-2 top-2 flex items-center gap-1">

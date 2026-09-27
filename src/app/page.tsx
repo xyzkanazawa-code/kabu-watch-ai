@@ -302,50 +302,52 @@ export default function HomePage() {
               </Link>
             </div>
 
-            {/* 🤖 端末のGemini連携ボタンバー */}
-            <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-2.5">
-              <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5 mr-1">
-                <Bot className="w-4 h-4 text-indigo-400" />
-                端末のGemini:
-              </span>
+            {/* 🤖 端末のGemini連携バー (スマホでも溢れない2段/グリッド対応) */}
+            <div className="pt-3 border-t border-slate-800/80 space-y-2">
+              <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                <Bot className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span>端末のGemini連携:</span>
+              </div>
 
-              {/* 端末のGoogle Gemini（Web/アプリ）を直接開くボタン */}
-              <a
-                href="https://gemini.google.com/app"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-md shadow-indigo-600/30 active:scale-95 transition-all"
-                title="端末のGoogle Geminiアプリ/Webサイトを直接開く"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
-                <span>端末のGeminiを開く</span>
-                <ExternalLink className="w-3 h-3 text-cyan-200" />
-              </a>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* 端末のGoogle Gemini（Web/アプリ）を直接開くボタン */}
+                <a
+                  href="https://gemini.google.com/app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/30 active:scale-95 transition-all text-center"
+                  title="端末のGoogle Geminiアプリ/Webサイトを直接開く"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-200 animate-pulse shrink-0" />
+                  <span>端末のGeminiを開く</span>
+                  <ExternalLink className="w-3 h-3 text-cyan-200 shrink-0" />
+                </a>
 
-              {/* Geminiに直接株式相談するボタン（アプリ内AIチャット） */}
-              <button
-                onClick={() => setChatState({ 
-                  title: '相場・注目銘柄 AI相談', 
-                  content: '今日の日経平均動向、個別株の材料、決算の見方など、気になることを自由にGeminiに質問できます。' 
-                })}
-                className="px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white font-bold text-xs border border-indigo-500/40 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-              >
-                <MessageSquareText className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Geminiに株相談</span>
-              </button>
+                {/* Geminiに直接株式相談するボタン（アプリ内AIチャット） */}
+                <button
+                  onClick={() => setChatState({ 
+                    title: '相場・注目銘柄 AI相談', 
+                    content: '今日の日経平均動向、個別株の材料、決算の見方など、気になることを自由にGeminiに質問できます。' 
+                  })}
+                  className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white font-bold text-xs border border-indigo-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm text-center"
+                >
+                  <MessageSquareText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>Geminiに株相談</span>
+                </button>
 
-              {/* 端末のAPI無料キー設定（BYOK） */}
-              <button
-                onClick={() => setIsApiKeyModalOpen(true)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                  hasUserApiKey
-                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20'
-                    : 'bg-purple-950/40 border-purple-500/40 text-purple-300 hover:bg-purple-900/40'
-                }`}
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>{hasUserApiKey ? '端末キー: 有効（BYOK）' : '端末の無料キー設定'}</span>
-              </button>
+                {/* 端末のAPI無料キー設定（BYOK） */}
+                <button
+                  onClick={() => setIsApiKeyModalOpen(true)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center ${
+                    hasUserApiKey
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20'
+                      : 'bg-purple-950/40 border-purple-500/40 text-purple-300 hover:bg-purple-900/40'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{hasUserApiKey ? '端末キー: 有効' : '無料キー設定'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>

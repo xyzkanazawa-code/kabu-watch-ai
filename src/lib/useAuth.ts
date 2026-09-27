@@ -63,6 +63,21 @@ export function useAuth() {
 
     checkSession();
 
+    // ローカル認証状態変更イベントの監視
+    const handleAuthChange = () => {
+      try {
+        const raw = localStorage.getItem(LOCAL_USER_KEY);
+        if (raw) {
+          setUser(JSON.parse(raw));
+        } else {
+          setUser(null);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    window.addEventListener('kabu_watch_auth_changed', handleAuthChange);
+
     // Supabaseの認証状態リスナー
     let authListener: any = null;
     if (supabase) {
@@ -87,6 +102,7 @@ export function useAuth() {
 
     return () => {
       mounted = false;
+      window.removeEventListener('kabu_watch_auth_changed', handleAuthChange);
       if (authListener) authListener.unsubscribe();
     };
   }, []);

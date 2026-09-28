@@ -283,23 +283,54 @@ export default function HomePage() {
             </p>
 
             {/* Semantic Search & Portfolio Trigger Buttons */}
-            <div className="pt-2 flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setIsSearchOpen(true)}
-                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 text-black font-extrabold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-98 cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5" />
-                銘柄検索（証券コード・社名・AI意味検索）
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </button>
+            <div className="pt-2 space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 text-black font-extrabold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/25 active:scale-98 cursor-pointer"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  <span>🔍 AI言葉でスクリーニング ＆ 銘柄検索</span>
+                  <ArrowRight className="w-4 h-4 ml-0.5" />
+                </button>
 
-              <Link
-                href="/portfolio"
-                className="px-5 py-3.5 rounded-2xl bg-gray-900 hover:bg-gray-800 text-cyan-300 font-bold text-sm border border-cyan-500/40 flex items-center gap-2 transition-all shadow"
-              >
-                <Briefcase className="w-4 h-4 text-cyan-400" />
-                資産ポートフォリオ・仮想売買へ
-              </Link>
+                <Link
+                  href="/portfolio"
+                  className="px-5 py-3.5 rounded-2xl bg-gray-900/90 hover:bg-gray-800 text-cyan-300 font-bold text-sm border border-cyan-500/40 flex items-center gap-2 transition-all shadow"
+                >
+                  <Briefcase className="w-4 h-4 text-cyan-400" />
+                  <span>資産ポートフォリオ・仮想売買へ</span>
+                </Link>
+              </div>
+
+              {/* 言葉で探せるスクリーニング例（ワンタップ） */}
+              <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                <span className="text-gray-400 font-bold text-[11px]">人気の言葉で探す:</span>
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-[11px] transition-all"
+                >
+                  🔥 今注目の低位株
+                </button>
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-[11px] transition-all"
+                >
+                  ⚡ 出来高が異常にできてる株
+                </button>
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold text-[11px] transition-all"
+                >
+                  💎 株価500円以下の割安株
+                </button>
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-all hidden sm:inline-block"
+                >
+                  💰 高配当×好業績
+                </button>
+              </div>
             </div>
 
             {/* 🤖 端末のGemini連携バー (スマホでも溢れない2段/グリッド対応) */}

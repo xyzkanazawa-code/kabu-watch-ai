@@ -78,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
             >
               <div className="flex items-center gap-2 truncate">
                 <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
-                <span className="truncate">「7203」「日経」「半導体」で検索...</span>
+                <span className="truncate">「低位株」「出来高急増」「7203」でAI検索...</span>
               </div>
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono font-semibold text-gray-400 bg-gray-800 border border-gray-700 rounded shadow shrink-0">
                 ⌘K

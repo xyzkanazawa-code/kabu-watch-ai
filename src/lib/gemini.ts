@@ -83,34 +83,40 @@ export async function searchStocksBySemanticQuery(rawQuery: string): Promise<Sem
         combined.push(item);
       }
     }
-    return combined.slice(0, 6);
+    return combined.slice(0, 8);
   }
 
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `
-あなたは日本の株式市場に精通したシニアアナリストです。
-ユーザーから入力された検索キーワード（証券コード、店舗名、ブランド名、商品名、会社名、または事業内容・テーマ）から、合致する代表的な日本の上場企業（東証）を3〜5社選定してください。
+あなたは日本の株式市場に精通したシニア株式アナリスト兼スクリーニングAIです。
+ユーザーから入力された検索キーワードや「言葉によるスクリーニング条件」から、合致する代表的な日本の上場企業（東証プライム・スタンダード・グロース）を3〜6社厳選して出力してください。
 
 検索クエリ: "${rawQuery}" (正規化: "${query}")
 
-【最重要要件】
-1. 店舗名・ブランド名・サービス名（例: ユニクロ、ドンキ、スシロー、無印、サイゼ、マック、ガスト、セブン、ファミマ、ディズニー等）の場合:
-   - 一般に知られる店舗名と上場会社名が異なるため、「この会社ですか？」として運営元・親会社の正式上場企業（例: ユニクロ→ファーストリテイリング 9983、ドンキ→パン・パシフィックHD 7532、スシロー→FOOD & LIFE 3563、無印→良品計画 7453）を必ず1番目に確信度100で出力してください。
-2. 証券コード（例: 7203）や会社名の場合:
+【検索・スクリーニング判定ロジック】
+1. 💡 言葉による条件スクリーニング（例: 「低位株」「今注目の低位株」「ここ最近出来高が異常にできてる株」「急騰株」「高配当株」「割安成長株」「AI半導体」など）の場合:
+   - ユーザーの投資意図（株価帯、出来高急増、好材料、思惑、テーマなど）を深く理解してください。
+   - 例: 「低位株」「注目の低位株」なら株価数百円以下（または1,000円未満）で値動きが活発、事業再生やテーマ性がある東証上場銘柄（例: 名村造船所、日本板硝子、三菱自動車、ジャパンディスプレイ、さくらインターネット、AIメカテック等）をピックアップ。
+   - 例: 「出来高が異常にできてる株」「商い急増」なら大口資金流入や思惑で売買高が跳ね上がっている銘柄をピックアップ。
+   - "relevanceReason" には「現在の株価水準」「なぜこの条件に合致するのか」「出来高急増の理由や材料・今後のカタリスト」を投資家向けに具体的に分かりやすく明記してください。
+   - "representativeProducts" には特徴タグ（例: ["株価300円台", "出来高急増", "思惑買い"]）を格納してください。
+
+2. 🏪 店舗名・ブランド名・サービス名（例: ユニクロ、ドンキ、スシロー、無印、サイゼ、マック等）の場合:
+   - 運営親会社の上場企業（例: ファーストリテイリング 9983、パン・パシフィックHD 7532等）を最優先で出力してください。
+
+3. 🔢 証券コード（例: 7203）や会社名の場合:
    - 該当する銘柄を最優先の1件目に確信度100で出力してください。
-3. 曖昧な名前や略称の場合:
-   - 「もしかしてこの会社ですか？」と投資家が探している可能性の高い候補を複数社提案してください。
 
 必ず以下のJSON配列形式のみで出力してください。Markdownのコードブロックや余計な解説は含めないでください。
 [
   {
-    "ticker": "9983",
-    "name": "ファーストリテイリング",
-    "sector": "小売業",
-    "relevanceReason": "「ユニクロ」「GU」を展開する運営親会社です。",
-    "representativeProducts": ["ユニクロ", "GU"],
-    "confidenceScore": 100
+    "ticker": "7014",
+    "name": "名村造船所",
+    "sector": "輸送用機器",
+    "relevanceReason": "造船サイクルの好転と円安恩恵により大口資金が集中。出来高が急増している代表的注目株。",
+    "representativeProducts": ["大型タンカー", "出来高急増", "低PBR"],
+    "confidenceScore": 95
   }
 ]
 `;
@@ -127,7 +133,7 @@ export async function searchStocksBySemanticQuery(rawQuery: string): Promise<Sem
         finalResults.push(g);
       }
     }
-    return finalResults.slice(0, 6);
+    return finalResults.slice(0, 8);
   } catch (error) {
     console.error('Gemini Semantic Search Error:', error);
     const fallbackResults = getFallbackSemanticSearch(query);
@@ -137,7 +143,7 @@ export async function searchStocksBySemanticQuery(rawQuery: string): Promise<Sem
         combined.push(item);
       }
     }
-    return combined.slice(0, 6);
+    return combined.slice(0, 8);
   }
 }
 
@@ -593,6 +599,113 @@ function getFallbackSemanticSearch(query: string): SemanticSearchResult[] {
   }
 
   const q = query.toLowerCase();
+
+  // 1. 低位株・今注目の低位株スクリーニング
+  if (q.includes('低位') || q.includes('ボロ株') || q.includes('1000円以下') || q.includes('500円') || q.includes('ワンコイン')) {
+    return [
+      {
+        ticker: '7014',
+        name: '名村造船所',
+        sector: '輸送用機器',
+        relevanceReason: '【今注目の急騰低位株】株価数百円台から大化けした代表格。造船市況の高騰と大型船の受注残急増により、出来高・売買代金ともに東証トップクラスの過熱ぶりを維持。',
+        representativeProducts: ['大型商船・タンカー', 'PBR0.9倍', '出来高急増'],
+        confidenceScore: 98
+      },
+      {
+        ticker: '5202',
+        name: '日本板硝子',
+        sector: 'ガラス・土石製品',
+        relevanceReason: '【注目の低位バリュー株】株価400〜500円台。建築・自動車用ガラスの世界大手。PBR0.4倍台の超割安放置から、事業再生と資本効率改善期待で出来高が急激に増加中。',
+        representativeProducts: ['建築用ガラス', 'ソーラー用ガラス', 'PBR0.4倍'],
+        confidenceScore: 94
+      },
+      {
+        ticker: '6740',
+        name: 'ジャパンディスプレイ (JDI)',
+        sector: '電気機器',
+        relevanceReason: '【超低位・思惑株】株価20〜30円台の超低位株。次世代OLED「eLEAP」の量産化や車載ディスプレイ提携の材料が出るたびに異常な出来高を伴って急動意。',
+        representativeProducts: ['eLEAPディスプレイ', '車載液晶', '超低位株'],
+        confidenceScore: 90
+      },
+      {
+        ticker: '7211',
+        name: '三菱自動車',
+        sector: '輸送用機器',
+        relevanceReason: '【400円台の割安低位株】東南アジア市場でのハイブリッド車投入や日産・ホンダとの協業検討を機に機関投資家の買い戻しが活発化。配当利回り4%超。',
+        representativeProducts: ['アウトランダーPHEV', 'デリカD:5', '高配当低位株'],
+        confidenceScore: 89
+      }
+    ];
+  }
+
+  // 2. 出来高急増・異常な商いスクリーニング
+  if (q.includes('出来高') || q.includes('商い') || q.includes('売買高') || q.includes('異常') || q.includes('急増')) {
+    return [
+      {
+        ticker: '7011',
+        name: '三菱重工業',
+        sector: '機械',
+        relevanceReason: '【出来高・売買代金連日首位】防衛予算拡大および次世代原発・航空宇宙の国策テーマが集中。個人のみならず海外機関投資家の巨額資金が流入し、連日猛烈な大商いが継続。',
+        representativeProducts: ['防衛装備品', '次世代革新炉', '売買代金東証トップ'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '3778',
+        name: 'さくらインターネット',
+        sector: '情報・通信業',
+        relevanceReason: '【大口資金集中・出来高急増株】政府クラウド先行採択と米NVIDIA製最新GPU調達の報道を機に売買高が爆発。個人投資家の資金回転が猛烈に加速中。',
+        representativeProducts: ['生成AIクラウド', '政府クラウド認証', '出来高急増'],
+        confidenceScore: 96
+      },
+      {
+        ticker: '3498',
+        name: '霞ヶ関キャピタル',
+        sector: '不動産業',
+        relevanceReason: '【市場屈指の大商いグロース株】冷凍冷蔵倉庫やアパートメントホテルの開発ファンドが好調。機関投資家の参入と売り方の買い戻しが交錯し、連日異常な売買代金を記録。',
+        representativeProducts: ['冷凍自動倉庫', 'Fav Hotel', '売買高急拡大'],
+        confidenceScore: 92
+      },
+      {
+        ticker: '6920',
+        name: 'レーザーテック',
+        sector: '電気機器',
+        relevanceReason: '【個人・機関投資家の商い集中】日経平均構成銘柄の中で売買代金トップ常連。半導体市況のニュースに応じて数千万株単位の商いが成立する超流動性銘柄。',
+        representativeProducts: ['EUVマスク検査装置', '日経平均連動', '超巨大売買高'],
+        confidenceScore: 90
+      }
+    ];
+  }
+
+  // 3. 高配当・割安バリュー株
+  if (q.includes('配当') || q.includes('利回り') || q.includes('バリュー') || q.includes('割安')) {
+    return [
+      {
+        ticker: '8306',
+        name: '三菱UFJフィナンシャル・グループ',
+        sector: '銀行業',
+        relevanceReason: '【高配当×金利上昇メリット】日銀の利上げ局面で利ざや改善期待が続く国内メガバンク首位。配当性向40%目標、自社株買い積極化で株主還元が極めて手厚い。',
+        representativeProducts: ['メガバンク', '配当利回り約3.5%', '自社株買い'],
+        confidenceScore: 96
+      },
+      {
+        ticker: '8058',
+        name: '三菱商事',
+        sector: '卸売業',
+        relevanceReason: '【累進配当の総合商社王者】減配せず増配または維持を掲げる累進配当を宣言。資源高と非資源分野の強固なキャッシュ創出力、大規模自己株取得が強み。',
+        representativeProducts: ['総合商社', '累進配当', 'バフェット投資銘柄'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '9432',
+        name: '日本電信電話 (NTT)',
+        sector: '情報・通信業',
+        relevanceReason: '【150円台の超安定・高配当低位株】株式25分割により株価150円台で購入可能。10期以上の連続増配と鉄壁のディフェンシブ収益力を誇る初心者にも人気の低位高配当株。',
+        representativeProducts: ['株価150円台', '連続増配', '国内通信インフラ'],
+        confidenceScore: 93
+      }
+    ];
+  }
+
   if (q.includes('プリウス') || q.includes('自動車') || q.includes('車')) {
     return [
       {

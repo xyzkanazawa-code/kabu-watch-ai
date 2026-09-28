@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { NewsItem, DisclosureItem, TimelineItem, FinancialTrend, ProductItem, GlobalInfoItem, StockOverviewAI } from '@/types/stock';
 import { Timeline } from './Timeline';
-import { Newspaper, Megaphone, Coins, Handshake, Factory, Globe, BarChart, FileText, Bot, Sparkles, Download, CheckCircle, ExternalLink, ArrowUpRight } from 'lucide-react';
+import { Newspaper, Megaphone, Coins, Handshake, Factory, Globe, BarChart, FileText, Bot, Sparkles, Download, CheckCircle, ExternalLink, ArrowUpRight, Check } from 'lucide-react';
 
 interface StockTabsProps {
   ticker: string;
@@ -39,6 +39,17 @@ export const StockTabs: React.FC<StockTabsProps> = ({
   onOpenPartner
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('aiOverview');
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  const handleOpenDeviceGemini = () => {
+    const prompt = `${stockName}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(prompt).catch(() => {});
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 4000);
+    }
+    window.open('https://gemini.google.com/app', '_blank', 'noopener,noreferrer');
+  };
 
   const tabs = [
     { id: 'aiOverview', label: '🤖 Geminiさんの企業徹底解読', count: undefined },
@@ -115,14 +126,25 @@ export const StockTabs: React.FC<StockTabsProps> = ({
                 </div>
               </div>
 
-              {/* Chat action button */}
-              <button
-                onClick={() => onOpenChat(`${stockName}（${ticker}）についての質問`, `銘柄: ${stockName} (${ticker})\n概要: ${aiOverview.summary}\n事業: ${aiOverview.whatCompany || ''}`)}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 hover:from-cyan-400 to-blue-600 hover:to-blue-500 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/25 transition-all hover:scale-105 shrink-0"
-              >
-                <Sparkles className="w-4 h-4 text-black" />
-                <span>Geminiさんにこの銘柄の疑問を聞く</span>
-              </button>
+              {/* 📱 端末のGeminiを開くボタン */}
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  onClick={handleOpenDeviceGemini}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 shrink-0"
+                  title="端末のGoogle Gemini（Web/アプリ）を直接開く"
+                >
+                  <Sparkles className="w-4 h-4 text-cyan-200 animate-pulse" />
+                  <span>端末のGeminiを開く</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-cyan-200" />
+                </button>
+
+                {copiedPrompt && (
+                  <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1.5 rounded-xl border border-emerald-500/40 flex items-center gap-1 shadow-md animate-fade-in">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    質問文をコピーしました！
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* 現状の総括・スタンス */}

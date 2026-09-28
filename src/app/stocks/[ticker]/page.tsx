@@ -13,7 +13,7 @@ import { PartnerCompanyCard } from '@/components/PartnerCompanyCard';
 import { BuyModal } from '@/components/BuyModal';
 import { getFavorites, addFavorite, removeFavorite, isFavorite } from '@/lib/storage';
 import { StockInfo, TimelineItem, NewsItem, DisclosureItem, FinancialTrend, ProductItem, GlobalInfoItem, StockOverviewAI } from '@/types/stock';
-import { Loader2, ArrowLeft, Bot, Sparkles } from 'lucide-react';
+import { Loader2, ArrowLeft, Bot, Sparkles, ExternalLink, Check, Copy } from 'lucide-react';
 
 export default function StockCenterPage() {
   const params = useParams();
@@ -23,6 +23,7 @@ export default function StockCenterPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isFav, setIsFav] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Stock Data state
@@ -75,6 +76,17 @@ export default function StockCenterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenDeviceGemini = () => {
+    if (!stockInfo) return;
+    const prompt = `${stockInfo.name}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(prompt).catch(() => {});
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 4000);
+    }
+    window.open('https://gemini.google.com/app', '_blank', 'noopener,noreferrer');
   };
 
   const handleToggleFav = () => {
@@ -132,11 +144,11 @@ export default function StockCenterPage() {
               }}
             />
 
-            {/* 🤖 Geminiさん常駐アシスタントバー */}
+            {/* 🤖 端末のGeminiボタン設置バー */}
             <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-[#11192e] via-[#0d1629] to-[#122238] border border-cyan-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/30 to-purple-600/30 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/30 via-indigo-600/30 to-purple-600/30 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shadow-md">
                     <Bot className="w-5 h-5 animate-pulse" />
                   </div>
                   <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
@@ -146,27 +158,37 @@ export default function StockCenterPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-cyan-300">Geminiさん</span>
+                    <span className="text-sm font-black text-cyan-300">Gemini</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
-                      常駐AIアドバイザー
+                      公式AIアドバイザー
                     </span>
                   </div>
                   <p className="text-xs text-gray-300 mt-0.5">
-                    「{stockInfo.name}」の会社情報・世界シェア・直近決算と市場反応・需給・リスクを詳しく解説中！
+                    「{stockInfo.name}」の会社情報・世界シェア・直近決算と需給を端末のGeminiで詳しく解説！
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setChatState({
-                  title: `${stockInfo.name}（${ticker}）についてGeminiさんに質問`,
-                  content: `銘柄コード: ${ticker}\n会社名: ${stockInfo.name}\n事業内容: ${aiOverview.whatCompany || stockInfo.description}\n直近決算: ${aiOverview.latestEarnings || ''}\n指標・需給: ${aiOverview.indicators || ''}`
-                })}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-black font-extrabold text-xs transition-all shadow-md shadow-cyan-500/20 shrink-0"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-black" />
-                <span>Geminiさんに直接質問する</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* 📱 端末のGeminiを開くボタン */}
+                <button
+                  onClick={handleOpenDeviceGemini}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs transition-all shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 shrink-0"
+                  title="端末のGoogle Gemini（Web/アプリ）を直接開く"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
+                  <span>端末のGeminiを開く</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-cyan-200" />
+                </button>
+
+                {/* コピー完了通知 */}
+                {copiedPrompt && (
+                  <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1.5 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    質問文をコピーしました！貼り付けて質問できます
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Multi-perspective Tabs Area */}

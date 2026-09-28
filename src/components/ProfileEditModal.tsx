@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth, AVATAR_PRESETS } from '@/lib/useAuth';
-import { X, User, Check, Sparkles, Image, ShieldCheck, Heart, Save } from 'lucide-react';
+import { X, User, Check, Sparkles, Image, ShieldCheck, Heart, Save, LogOut } from 'lucide-react';
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ const STYLE_OPTIONS = [
 ];
 
 export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onClose }) => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, signOut } = useAuth();
   
   const [name, setName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -213,6 +213,22 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onCl
             <span>変更内容を保存する</span>
           </button>
         </form>
+
+        {/* 🚪 アカウントの削除・ログアウトボタン */}
+        <div className="pt-4 mt-4 border-t border-gray-800/80 flex items-center justify-between">
+          <span className="text-[11px] text-gray-500">この端末のログイン情報をクリア</span>
+          <button
+            type="button"
+            onClick={() => {
+              signOut();
+              onClose();
+            }}
+            className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-xs flex items-center gap-1.5 transition-all"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>アカウントを消去・ログアウト</span>
+          </button>
+        </div>
 
       </div>
     </div>

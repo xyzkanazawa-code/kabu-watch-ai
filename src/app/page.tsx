@@ -139,7 +139,7 @@ export default function HomePage() {
     const favs = getFavorites();
     setFavorites(favs);
     loadWatchlistStocks(favs);
-    fetchHomeTimeline();
+    fetchHomeTimeline(favs);
 
     // 端末のGemini APIキー存在チェック
     const checkKey = () => {
@@ -226,27 +226,51 @@ export default function HomePage() {
     }
   };
 
-  const fetchHomeTimeline = async () => {
+  const fetchHomeTimeline = async (favList?: string[]) => {
     setIsUpdating(true);
     try {
-      // タイムアウト付きで並行フェッチ
+      const activeTickers = (favList && favList.length > 0) 
+        ? favList 
+        : (favorites.length > 0 ? favorites : getFavorites());
+      
+      const targetTickers = activeTickers.length > 0 ? activeTickers.slice(0, 8) : ['7203', '6920', '6315', '9984'];
+
+      // タイムアウト付きでお気に入り全銘柄を並行フェッチ
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-      const [res7203, res6920] = await Promise.allSettled([
-        fetch('/api/stocks/7203', { signal: controller.signal }).then((r) => r.json()),
-        fetch('/api/stocks/6920', { signal: controller.signal }).then((r) => r.json()),
-      ]);
+      const fetchPromises = targetTickers.map((t) =>
+        fetch(`/api/stocks/${t}`, { signal: controller.signal })
+          .then((r) => r.json())
+          .catch((err) => {
+            console.warn(`Timeline fetch failed for ${t}:`, err);
+            return null;
+          })
+      );
 
+      const settledResults = await Promise.allSettled(fetchPromises);
       clearTimeout(timeoutId);
 
-      const items7203 = res7203.status === 'fulfilled' ? res7203.value.timeline || [] : [];
-      const items6920 = res6920.status === 'fulfilled' ? res6920.value.timeline || [] : [];
+      const allItems: TimelineItem[] = [];
+      for (const res of settledResults) {
+        if (res.status === 'fulfilled' && res.value && Array.isArray(res.value.timeline)) {
+          allItems.push(...res.value.timeline);
+        }
+      }
 
-      if (items7203.length > 0 || items6920.length > 0) {
-        const merged = [...items7203, ...items6920];
-        merged.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-        setTimeline(merged);
+      if (allItems.length > 0) {
+        // 重複排除 (ID または URL/タイトル)
+        const seen = new Set<string>();
+        const uniqueItems = allItems.filter((item) => {
+          const key = item.id || `${item.ticker}-${item.title}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        // 日付降順ソート
+        uniqueItems.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+        setTimeline(uniqueItems);
       }
     } catch (err) {
       console.warn('Timeline live fetch error (keeping preset):', err);
@@ -544,25 +568,34 @@ export default function HomePage() {
 
         {/* Featured Timeline Section */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-emerald-400" />
-              <h2 className="text-xl font-bold text-white">
-                時系列統合タイムライン (最新順)
-              </h2>
-              {isUpdating && (
-                <span className="text-[11px] text-cyan-400 font-mono flex items-center gap-1 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20 animate-pulse">
-                  <RefreshCw className="w-3 h-3 animate-spin" /> 最新データ同期中
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  お気に入り銘柄の時系列タイムライン
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                  {favorites.length}銘柄連動
                 </span>
-              )}
+                {isUpdating && (
+                  <span className="text-[11px] text-cyan-400 font-mono flex items-center gap-1 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20 animate-pulse">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> 最新開示・ニュース同期中
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                登録したお気に入り銘柄（★）の適時開示・ニュース・決算をリアルタイム集約し最新順に一覧表示
+              </p>
             </div>
+
             <button
-              onClick={fetchHomeTimeline}
-              className="text-xs text-gray-400 hover:text-cyan-300 flex items-center gap-1 transition-colors"
-              title="タイムラインを再読み込み"
+              onClick={() => fetchHomeTimeline(favorites)}
+              className="px-3 py-1.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-cyan-500/40 text-xs text-gray-300 hover:text-cyan-300 flex items-center gap-1.5 transition-all self-start sm:self-auto shrink-0 shadow-sm"
+              title="お気に入り銘柄のタイムラインを再読み込み"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-              再読込
+              <span>最新に更新</span>
             </button>
           </div>
 

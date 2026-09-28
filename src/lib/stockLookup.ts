@@ -147,6 +147,9 @@ export const BRAND_TO_STOCK_MAP: Record<string, { ticker: string; officialName: 
   'ルネサス': { ticker: '6723', officialName: 'ルネサスエレクトロニクス', brandName: 'ルネサス (車載マイコン世界首位)', description: '車載マイコン・アナログ半導体大手。自動運転やEV向けに強み。', sector: '電気機器' },
   'ディスコ': { ticker: '6146', officialName: 'ディスコ', brandName: 'DISCO (半導体切断・研削装置)', description: '半導体ダイシングソー（切断装置）で世界シェア8割の独占企業。', sector: '機械' },
   'スクリーン': { ticker: '7735', officialName: 'SCREENホールディングス', brandName: 'SCREEN (半導体洗浄装置)', description: '半導体ウエハ枚葉式洗浄装置で世界首位。', sector: '電気機器' },
+  'towa': { ticker: '6315', officialName: 'TOWA', brandName: 'TOWA (半導体モールディング装置世界首位)', description: 'モールディング装置世界シェア約65%首位。HBM量産向けコンプレッション成形装置世界唯一。', sector: '機械' },
+  'トーワ': { ticker: '6315', officialName: 'TOWA', brandName: 'TOWA (半導体モールディング装置世界首位)', description: 'モールディング装置世界シェア約65%首位。HBM量産向けコンプレッション成形装置世界唯一。', sector: '機械' },
+  '6315': { ticker: '6315', officialName: 'TOWA', brandName: 'TOWA (半導体モールディング装置世界首位)', description: 'モールディング装置世界シェア約65%首位。HBM量産向けコンプレッション成形装置世界唯一。', sector: '機械' },
 };
 
 

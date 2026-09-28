@@ -167,9 +167,17 @@ export interface SemanticSearchResult {
 
 export interface StockOverviewAI {
   summary: string;
-  catalysts: string[];
-  risks: string[];
-  investmentOutlook: string;
+  whatCompany?: string;       // 【何の会社か】事業内容、世界シェア、主力製品、売上構成
+  latestEarnings?: string;    // 【直近の決算】売上・利益、受注高・受注残、市場反応と急騰落の背景
+  recentTrends?: string[];    // 【最近の動き】新製品、アナリスト目標株価、報道、株主還元
+  indicators?: string;        // 【株価の指標と需給】PER、PBR、利回り、時価総額、信用倍率・重さ
+  bullPoints?: string[];      // 【強気材料】成長性、受注残、上方修正余地
+  riskPoints?: string[];      // 【リスク】市況の波、中国依存、需給の重さ等
+  nextCatalysts?: string;     // 【次の大きなイベント】次回決算時期と焦点
+  sources?: string[];         // 【主な出典】開示資料、株探、Yahoo!ファイナンス等
+  catalysts: string[];        // 互換性維持
+  risks: string[];            // 互換性維持
+  investmentOutlook: string;  // 互換性維持
 }
 
 // 仮想売買・保有ポートフォリオ型

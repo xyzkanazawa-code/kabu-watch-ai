@@ -297,6 +297,32 @@ export const STOCK_MASTER: Record<string, StockInfo> = {
       marketCap: 153000
     }
   },
+  '6315': {
+    ticker: '6315',
+    name: 'TOWA',
+    market: 'プライム',
+    sector: '機械',
+    price: 2193.0,
+    change: +29.0,
+    changePercent: +1.34,
+    volume: 8420000,
+    prevClose: 2164.0,
+    description: '半導体モールディング装置世界シェア約65%首位。HBM量産用コンプレッション成形装置を製造できる世界唯一の精密装置メーカー。',
+    credit: {
+      buyBalance: 6980000,
+      sellBalance: 99800,
+      ratio: 69.94,
+      lastUpdated: '2026/09/25'
+    },
+    financials: {
+      per: 24.0,
+      pbr: 2.20,
+      roe: 14.5,
+      dividendYield: 1.09,
+      nextEarningsDate: '2026年11月上旬',
+      marketCap: 1670
+    }
+  },
   '7011': {
     ticker: '7011',
     name: '三菱重工業',
@@ -910,6 +936,14 @@ export async function fetchMergedTimeline(ticker: string, stockName: string): Pr
 
 // 業績推移データ
 export function fetchFinancialTrends(ticker: string): FinancialTrend[] {
+  if (ticker === '6315') {
+    return [
+      { period: '2023/3', sales: 538, operatingProfit: 104, netProfit: 78, eps: 78.2 },
+      { period: '2024/3', sales: 512, operatingProfit: 85, netProfit: 62, eps: 62.1 },
+      { period: '2025/3', sales: 560, operatingProfit: 95, netProfit: 72, eps: 72.5 },
+      { period: '2026/3(予)', sales: 640, operatingProfit: 102.4, netProfit: 78.5, eps: 91.4 }
+    ];
+  }
   return [
     { period: '2023/3', sales: 371542, operatingProfit: 27250, netProfit: 24513, eps: 178.5 },
     { period: '2024/3', sales: 450953, operatingProfit: 53529, netProfit: 49449, eps: 365.2 },
@@ -921,7 +955,13 @@ export function fetchFinancialTrends(ticker: string): FinancialTrend[] {
 // 商品・サービス一覧
 export function fetchProductList(ticker: string): ProductItem[] {
   const stock = STOCK_MASTER[ticker];
-  if (ticker === '7203') {
+  if (ticker === '6315') {
+    return [
+      { name: 'コンプレッション成形装置 (CPMシリーズ / INNOMS)', category: '次世代成形装置', share: '世界シェア No.1 (HBM独占)', description: 'AI向け超高速広帯域メモリ（HBM）や最先端パッケージングで量産可能な世界唯一の樹脂封止装置。8月発売の次世代機INNOMSは量産コストを約半減。' },
+      { name: '半導体モールディング装置 & 超精密金型', category: '半導体後工程', share: '世界シェア 約65%首位', description: '半導体チップを熱硬化性樹脂で高精度に保護・封止する後工程の不可欠装置。世界トップクラスの金型加工技術を誇る。' },
+      { name: 'シンギュレーション装置 & 超精密工具', category: '切断・加工装置', share: 'グローバル高シェア', description: '成形後のパッケージ基板を個片に高精度かつ高速に切断・ダイシングする装置群。' }
+    ];
+  } else if (ticker === '7203') {
     return [
       { name: 'プリウス (PRIUS)', category: 'HV / HEV', share: 'グローバル世界首位', description: 'ハイブリッド技術の金字塔。最新5世代モデルは先進デザインと圧倒的省燃費を達成。' },
       { name: 'RAV4', category: 'クロスオーバーSUV', share: '北米ベストセラー', description: '堅牢な4WD性能と広大な室内空間で日米欧を中心に高い人気を誇るフラッグシップモデル。' },
@@ -941,6 +981,14 @@ export function fetchProductList(ticker: string): ProductItem[] {
 
 // 海外情報
 export function fetchGlobalInfo(ticker: string): GlobalInfoItem[] {
+  if (ticker === '6315') {
+    return [
+      { region: '中国市場', salesRatio: '約41%', description: 'レガシー半導体および先端パッケージ向けのモールディング装置需要が極めて旺盛。第1四半期の受注では約48%を占める最大注力地域。' },
+      { region: '台湾・韓国市場 (アジア)', salesRatio: '約35%', description: 'TSMCや韓国メモリ大手（SKハイニックス、サムスン）などHBM・AI先端パッケージを手掛けるメガファウンドリ向けにコンプレッション装置を供給。' },
+      { region: '北米・欧州市場', salesRatio: '約12%', description: '車載半導体やパワー半導体の高信頼性パッケージング需要に対応。現地サポート拠点を拡充。' },
+      { region: '国内 (日本)', salesRatio: '約12%', description: 'マザー工場である京都・佐賀工場にて最先端金型および次世代成形装置のR&D・精密加工を集中。' }
+    ];
+  }
   return [
     { region: '北米市場', salesRatio: '38%', description: '北米地域での販売台数・売上高は前年同期比+8.5%と非常に好調。現地生産率拡大により関税・物流リスクを緩和。' },
     { region: 'アジア・中国市場', salesRatio: '28%', description: '現地EV/新エネルギー車価格競争の中で、ハイブリッド車および高付加価値車種へのシフトで採算性を維持。' },

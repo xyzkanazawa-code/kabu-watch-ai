@@ -10,6 +10,7 @@ import { getStoredApiKey } from '@/lib/apiKeyStorage';
 import { ApiKeyModal } from './ApiKeyModal';
 import { AuthModal } from './AuthModal';
 import { ProfileEditModal } from './ProfileEditModal';
+import { ExternalAiSettingsModal } from './ExternalAiSettingsModal';
 
 interface NavbarProps {
   onOpenSearch: () => void;
@@ -22,6 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
   const { user, isLoggedIn, signOut } = useAuth();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -111,6 +113,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                 <span className="hidden sm:inline">{hasApiKey ? 'AIキー: 有効' : '無料キー'}</span>
               </button>
 
+              {/* ⚙️ 外部AIアシスタント設定ボタン (ChatGPT, Claude, Perplexity等の追加・解除) */}
+              <button
+                onClick={() => setIsAiSettingsModalOpen(true)}
+                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold bg-gray-900 border border-gray-800 hover:border-indigo-500/50 text-indigo-300 hover:text-white transition-all active:scale-95 shadow-sm"
+                title="銘柄ページで使う外部AI（ChatGPT, Claude, Perplexity等）を追加・外す"
+              >
+                <Settings className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden md:inline">AI設定</span>
+              </button>
+
               {/* 👤 会員アカウント / ログイン・会員登録ボタン */}
               {isLoggedIn && user ? (
                 <div className="relative">
@@ -129,8 +141,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                   </button>
 
                   {/* ドロップダウンメニュー */}
+                  <div className="hidden"></div>
                   {isUserMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-52 bg-[#111827] border border-gray-800 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn">
+                    <div className="absolute right-0 mt-2 w-56 bg-[#111827] border border-gray-800 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn">
                       <div className="px-3.5 py-2.5 border-b border-gray-800">
                         <span className="text-xs font-bold text-white block truncate">{user.name}</span>
                         <span className="text-[10px] text-gray-400 block truncate">{user.email}</span>
@@ -150,6 +163,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                       >
                         <User className="w-3.5 h-3.5 text-cyan-400" />
                         <span>名前・アバター編集</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          setIsAiSettingsModalOpen(true);
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs text-indigo-300 hover:text-white hover:bg-gray-800 flex items-center gap-2 transition-colors"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>外部AIアシスタント設定</span>
                       </button>
 
                       <button
@@ -366,6 +390,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
       <ProfileEditModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      <ExternalAiSettingsModal
+        isOpen={isAiSettingsModalOpen}
+        onClose={() => setIsAiSettingsModalOpen(false)}
       />
     </>
   );

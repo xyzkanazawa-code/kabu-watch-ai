@@ -13,7 +13,9 @@ import { PartnerCompanyCard } from '@/components/PartnerCompanyCard';
 import { BuyModal } from '@/components/BuyModal';
 import { getFavorites, addFavorite, removeFavorite, isFavorite } from '@/lib/storage';
 import { StockInfo, TimelineItem, NewsItem, DisclosureItem, FinancialTrend, ProductItem, GlobalInfoItem, StockOverviewAI } from '@/types/stock';
-import { Loader2, ArrowLeft, Bot, Sparkles, ExternalLink, Check, Copy } from 'lucide-react';
+import { Loader2, ArrowLeft, Bot, Sparkles, ExternalLink, Check, Copy, Settings, Plus } from 'lucide-react';
+import { ExternalAiSettingsModal } from '@/components/ExternalAiSettingsModal';
+import { useExternalAiSettings, ExternalAiItem } from '@/lib/useExternalAiSettings';
 
 export default function StockCenterPage() {
   const params = useParams();
@@ -23,8 +25,12 @@ export default function StockCenterPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isFav, setIsFav] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // 外部AIアシスタント設定
+  const { enabledAiList } = useExternalAiSettings();
 
   // Stock Data state
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
@@ -78,15 +84,16 @@ export default function StockCenterPage() {
     }
   };
 
-  const handleOpenDeviceGemini = () => {
+  const handleOpenExternalAi = (ai: ExternalAiItem) => {
     if (!stockInfo) return;
     const prompt = `${stockInfo.name}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。`;
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(prompt).catch(() => {});
-      setCopiedPrompt(true);
-      setTimeout(() => setCopiedPrompt(false), 4000);
+      setCopiedPrompt(ai.name);
+      setTimeout(() => setCopiedPrompt(null), 4000);
     }
-    window.open('https://gemini.google.com/app', '_blank', 'noopener,noreferrer');
+    const targetUrl = ai.urlWithPrompt ? ai.urlWithPrompt(prompt) : ai.url;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleToggleFav = () => {
@@ -144,7 +151,7 @@ export default function StockCenterPage() {
               }}
             />
 
-            {/* 🤖 端末のGeminiボタン設置バー */}
+            {/* 🤖 外部AI連携バー（Gemini、ChatGPT、Claude、Perplexity等。自由に追加・削除・ON/OFF可能） */}
             <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-[#11192e] via-[#0d1629] to-[#122238] border border-cyan-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -158,35 +165,55 @@ export default function StockCenterPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-cyan-300">Gemini</span>
+                    <span className="text-sm font-black text-cyan-300">外部AIワンタップ相談</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
-                      公式AIアドバイザー
+                      質問文自動コピー
                     </span>
                   </div>
                   <p className="text-xs text-gray-300 mt-0.5">
-                    「{stockInfo.name}」の会社情報・世界シェア・直近決算と需給を端末のGeminiで詳しく解説！
+                    「{stockInfo.name}」の事業・世界シェア・決算・需給をお好みの端末内AIで詳しく質問できます
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* 📱 端末のGeminiを開くボタン */}
+              {/* AIボタン群 & 設定ボタン */}
+              <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                {enabledAiList.map((ai) => (
+                  <button
+                    key={ai.id}
+                    onClick={() => handleOpenExternalAi(ai)}
+                    className={`inline-flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl bg-gradient-to-r ${ai.bgGradient} ${ai.textColor} font-bold text-xs transition-all shadow-md hover:scale-105 active:scale-95 shrink-0 border ${ai.borderClass}`}
+                    title={`端末の${ai.name}を開いて「${stockInfo.name}」を質問`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
+                    <span>{ai.name}</span>
+                    <ExternalLink className="w-3 h-3 opacity-80" />
+                  </button>
+                ))}
+
+                {enabledAiList.length === 0 && (
+                  <span className="text-xs text-gray-400">AIボタンが外されています</span>
+                )}
+
+                {/* ⚙️ AIボタン追加・外す設定モーダルを開くボタン */}
                 <button
-                  onClick={handleOpenDeviceGemini}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs transition-all shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 shrink-0"
-                  title="端末のGoogle Gemini（Web/アプリ）を直接開く"
+                  type="button"
+                  onClick={() => setIsAiSettingsOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 border border-gray-700 hover:border-cyan-500/50 text-gray-300 hover:text-white text-xs font-semibold transition-all shrink-0"
+                  title="表示するAIボタンを追加・外す（カスタマイズ）"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-200 animate-pulse" />
-                  <span>端末のGeminiを開く</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-200" />
+                  <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>AI設定</span>
                 </button>
 
                 {/* コピー完了通知 */}
                 {copiedPrompt && (
-                  <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1.5 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    質問文をコピーしました！貼り付けて質問できます
-                  </span>
+                  <div className="w-full flex items-center justify-start sm:justify-end">
+                    <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/90 px-2.5 py-1 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      質問文をコピーしました！{copiedPrompt}で貼り付けて送信してください
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -266,6 +293,12 @@ export default function StockCenterPage() {
           initialType={buyModalType}
         />
       )}
+
+      {/* 🤖 外部AI設定モーダル */}
+      <ExternalAiSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
+      />
     </div>
   );
 }

@@ -16,11 +16,14 @@ import { getFavorites, removeFavorite, getAllFavoriteMetas, saveFavoriteMeta } f
 import { STOCK_MASTER } from '@/lib/dataFetcher';
 import { lookupStockByTicker } from '@/lib/stockLookup';
 import { PtsInfo } from '@/types/stock';
+import { useAuth } from '@/lib/useAuth';
+import { AuthModal } from '@/components/AuthModal';
+import { ProfileEditModal } from '@/components/ProfileEditModal';
 import { 
   Briefcase, TrendingUp, TrendingDown, Sparkles, Bot, Plus, 
   Trash2, CheckCircle2, Clock, AlertTriangle, RefreshCw, 
   Calendar, ArrowRight, ShieldCheck, ShoppingCart, Star, Eye, Info, Moon,
-  ArrowLeftRight
+  ArrowLeftRight, Lock, User, LogIn, Award
 } from 'lucide-react';
 
 interface WatchStockItem {
@@ -33,12 +36,15 @@ interface WatchStockItem {
 }
 
 export default function PortfolioPage() {
+  const { user, isLoggedIn } = useAuth();
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [activeTab, setActiveTab] = useState<'real' | 'simulation' | 'watchlist' | 'all'>('real');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [watchStocks, setWatchStocks] = useState<WatchStockItem[]>([]);
   const [watchLoading, setWatchLoading] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // モーダル管理
   const [buyModalTarget, setBuyModalTarget] = useState<{
@@ -254,6 +260,112 @@ export default function PortfolioPage() {
 
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
         
+        {/* 🔒 未ログイン時の会員限定機能ロック案内 */}
+        {!isLoggedIn && (
+          <div className="relative p-6 sm:p-10 rounded-3xl bg-gradient-to-b from-[#111827] via-[#0B0F19] to-[#111827] border border-cyan-500/40 shadow-2xl text-center space-y-6 overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 max-w-xl mx-auto space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500/20 via-purple-500/20 to-emerald-500/20 border border-cyan-500/40 text-cyan-400 shadow-xl shadow-cyan-500/10 mb-2">
+                <Lock className="w-8 h-8 text-cyan-300" />
+              </div>
+
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5" /> 会員限定プライベート機能
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  持株登録 ＆ 仮想取引は<br className="sm:hidden" />
+                  <span className="bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent">
+                    会員限定スペースです
+                  </span>
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+                  プライベートな資産情報である「持株の損益追跡」や「仮想売買シミュレーション」、「お気に入りウォッチリスト」は、ログインしたご本人様のみが安全に閲覧・記録できます。
+                </p>
+              </div>
+
+              {/* 機能ハイライト一覧 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-2">
+                <div className="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-300">
+                    <Briefcase className="w-4 h-4 text-purple-400" />
+                    <span>実際の保有株</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">買値や株数を安全に登録し、損益・信用期日をAI自動管理</p>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span>仮想トレード</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">リスクゼロで気になる銘柄の模擬売買を記録・検証</p>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
+                    <Star className="w-4 h-4 text-cyan-400" />
+                    <span>お気に入り株</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">夜間PTS・リアルタイム急変動を逃さず自分専用監視</p>
+                </div>
+              </div>
+
+              {/* アクションボタン */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-sm shadow-xl shadow-cyan-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>無料会員登録 / ログインして見る</span>
+                </button>
+                <Link
+                  href="/rankings"
+                  className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <TrendingUp className="w-4 h-4 text-amber-400" />
+                  <span>誰でも見れる売買ランキングへ ↗</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ログイン済み時のユーザープロフィールバー */}
+        {isLoggedIn && user && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#111827] via-gray-900 to-[#111827] border border-gray-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
+            <div className="flex items-center gap-3.5">
+              <img
+                src={user.avatarUrl}
+                alt={user.name}
+                className="w-12 h-12 rounded-2xl object-cover border-2 border-cyan-500/60 shadow-md shrink-0"
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-extrabold text-base text-white">{user.name}</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                    プライベート資産
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+                  <span>{user.investorStyle || '投資スタイル未設定'}</span>
+                  <span>・</span>
+                  <span className="text-gray-500">{user.email}</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsProfileModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-cyan-500/50 text-cyan-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+              <span>名前・アバター編集</span>
+            </button>
+          </div>
+        )}
+
         {/* Top Header & Separate Actions */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div>
@@ -826,6 +938,17 @@ export default function PortfolioPage() {
       <SemanticSearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        message="持株の登録・管理や、仮想取引、お気に入りウォッチリストは会員限定機能です。無料登録またはログインしてご利用ください。"
+      />
+
+      <ProfileEditModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
       />
     </div>
   );

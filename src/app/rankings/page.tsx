@@ -122,6 +122,25 @@ export default function RankingsPage() {
           </div>
         </div>
 
+        {/* 🌐 一般公開バナー（ランキングはみんな見れる、持株・仮想取引は会員限定） */}
+        <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-950/30 via-gray-900 to-cyan-950/30 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center gap-2.5">
+            <span className="p-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-[10px] px-2 border border-amber-500/40 shrink-0">
+              🌐 一般公開中
+            </span>
+            <span className="text-gray-300">
+              売買ランキングは<strong className="text-white">どなたでも自由</strong>にご覧いただけます。ご自身の持株登録や仮想トレードは<strong className="text-cyan-300">会員限定スペース</strong>でご利用いただけます。
+            </span>
+          </div>
+          <Link
+            href="/portfolio"
+            className="px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 hover:text-white font-bold text-xs shrink-0 transition-all flex items-center gap-1 active:scale-95"
+          >
+            <span>持株・仮想売買はこちら</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
         {/* Category Tabs */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
           {CATEGORIES.map((cat) => {

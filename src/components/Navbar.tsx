@@ -8,6 +8,8 @@ import {
 import { useAuth } from '@/lib/useAuth';
 import { getStoredApiKey } from '@/lib/apiKeyStorage';
 import { ApiKeyModal } from './ApiKeyModal';
+import { AuthModal } from './AuthModal';
+import { ProfileEditModal } from './ProfileEditModal';
 
 interface NavbarProps {
   onOpenSearch: () => void;
@@ -17,10 +19,12 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, hasNewAlerts }) => {
   const pathname = usePathname();
-  const { user, isLoggedIn, signInWithGoogle, signOut } = useAuth();
+  const { user, isLoggedIn, signOut } = useAuth();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // APIキーの有無を監視
   useEffect(() => {
@@ -30,8 +34,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
     checkKey();
 
     window.addEventListener('kabu_watch_api_key_changed', checkKey);
+
+    // グローバルな会員登録モーダル呼び出しイベントリスナー
+    const openAuth = () => setIsAuthModalOpen(true);
+    window.addEventListener('kabu_watch_open_auth_modal', openAuth);
+
     return () => {
       window.removeEventListener('kabu_watch_api_key_changed', checkKey);
+      window.removeEventListener('kabu_watch_open_auth_modal', openAuth);
     };
   }, []);
 
@@ -75,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
               </kbd>
             </button>
 
-            {/* 右側アクション（検索アイコン、無料キー、Googleログイン） */}
+            {/* 右側アクション（検索アイコン、無料キー、ログイン/会員登録） */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               
               {/* スマホ用検索ボタン */}
@@ -101,7 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                 <span className="hidden sm:inline">{hasApiKey ? 'AIキー: 有効' : '無料キー'}</span>
               </button>
 
-              {/* 👤 Googleログイン / アカウント */}
+              {/* 👤 会員アカウント / ログイン・会員登録ボタン */}
               {isLoggedIn && user ? (
                 <div className="relative">
                   <button
@@ -120,11 +130,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
 
                   {/* ドロップダウンメニュー */}
                   {isUserMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-[#111827] border border-gray-800 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn">
-                      <div className="px-3.5 py-2 border-b border-gray-800">
+                    <div className="absolute right-0 mt-2 w-52 bg-[#111827] border border-gray-800 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn">
+                      <div className="px-3.5 py-2.5 border-b border-gray-800">
                         <span className="text-xs font-bold text-white block truncate">{user.name}</span>
                         <span className="text-[10px] text-gray-400 block truncate">{user.email}</span>
+                        {user.investorStyle && (
+                          <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                            {user.investorStyle}
+                          </span>
+                        )}
                       </div>
+                      
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          setIsProfileModalOpen(true);
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs text-cyan-300 hover:text-white hover:bg-gray-800 flex items-center gap-2 transition-colors"
+                      >
+                        <User className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>名前・アバター編集</span>
+                      </button>
+
                       <button
                         onClick={() => {
                           setIsUserMenuOpen(false);
@@ -132,9 +159,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                         }}
                         className="w-full px-3.5 py-2 text-left text-xs text-gray-300 hover:text-white hover:bg-gray-800 flex items-center gap-2 transition-colors"
                       >
-                        <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                        <KeyRound className="w-3.5 h-3.5 text-purple-400" />
                         <span>Gemini APIキー設定</span>
                       </button>
+
+                      <div className="border-t border-gray-800/80 my-1" />
+
                       <button
                         onClick={() => {
                           setIsUserMenuOpen(false);
@@ -150,19 +180,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
                 </div>
               ) : (
                 <button
-                  onClick={() => signInWithGoogle()}
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 text-gray-900 font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-white/10 active:scale-95 transition-all shrink-0 cursor-pointer"
-                  title="Googleアカウントでワンタップログイン"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 active:scale-95 transition-all shrink-0 cursor-pointer"
+                  title="会員登録・ログインして持株やお気に入りを管理"
                 >
-                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span>Googleログイン</span>
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>ログイン / 登録</span>
                 </button>
               )}
+
 
             </div>
           </div>
@@ -325,6 +351,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
 
         </div>
       </nav>
+
+      {/* 各種モーダル */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      <ProfileEditModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </>
   );
 };

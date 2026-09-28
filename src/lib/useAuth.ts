@@ -8,23 +8,35 @@ export interface UserProfile {
   email: string;
   name: string;
   avatarUrl: string;
+  bio?: string;
+  investorStyle?: string;
   isLoggedIn: boolean;
 }
+
+// 投資家アバターの洗練されたプリセット一覧
+export const AVATAR_PRESETS = [
+  { id: 'pro', name: '敏腕投資家', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+  { id: 'cyber', name: 'サイバー投資家', url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&q=80' },
+  { id: 'bull', name: '強気ブル', url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=160&q=80' },
+  { id: 'analyst', name: 'AIアナリスト', url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=160&q=80' },
+  { id: 'cat', name: '招き猫投資家', url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=160&q=80' },
+  { id: 'executive', name: 'ファンドマネージャー', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80' },
+];
 
 const LOCAL_USER_KEY = 'kabu_watch_ai_local_user_v1';
 
 /**
- * ユーザー認証フック (Googleアカウント認証 & ローカル同期)
+ * ユーザー認証フック (会員登録・ログイン・プロフィール編集 & ローカル同期)
  */
 export function useAuth() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Supabaseのセッションをチェック
     let mounted = true;
 
     async function checkSession() {
+      // 1. Supabaseのセッションをチェック
       if (supabase) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -34,7 +46,9 @@ export function useAuth() {
               id: u.id,
               email: u.email || '',
               name: u.user_metadata?.full_name || u.email?.split('@')[0] || 'ユーザー',
-              avatarUrl: u.user_metadata?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80',
+              avatarUrl: u.user_metadata?.avatar_url || AVATAR_PRESETS[0].url,
+              bio: u.user_metadata?.bio || '株式投資を楽しんでいます！',
+              investorStyle: u.user_metadata?.investor_style || '現物長期・高配当狙い',
               isLoggedIn: true,
             });
             setLoading(false);
@@ -88,11 +102,12 @@ export function useAuth() {
             id: u.id,
             email: u.email || '',
             name: u.user_metadata?.full_name || u.email?.split('@')[0] || 'ユーザー',
-            avatarUrl: u.user_metadata?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80',
+            avatarUrl: u.user_metadata?.avatar_url || AVATAR_PRESETS[0].url,
+            bio: u.user_metadata?.bio || '株式投資を楽しんでいます！',
+            investorStyle: u.user_metadata?.investor_style || '現物長期・高配当狙い',
             isLoggedIn: true,
           });
         } else {
-          // ログアウト時
           const raw = localStorage.getItem(LOCAL_USER_KEY);
           if (!raw) setUser(null);
         }
@@ -108,10 +123,20 @@ export function useAuth() {
   }, []);
 
   /**
-   * Googleでログイン
+   * ユーザー情報を保存
+   */
+  const saveUser = (newUser: UserProfile) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(newUser));
+    }
+    setUser(newUser);
+    window.dispatchEvent(new Event('kabu_watch_auth_changed'));
+  };
+
+  /**
+   * Googleでワンタップログイン
    */
   const signInWithGoogle = async () => {
-    // 1. SupabaseのURLとKeyが存在し、本番環境連携が可能な場合
     if (supabase && process.env.NEXT_PUBLIC_SUPABASE_URL) {
       try {
         const { error } = await supabase.auth.signInWithOAuth({
@@ -126,21 +151,65 @@ export function useAuth() {
       }
     }
 
-    // 2. ワンタップ・Googleログイン（デモ & 超スムーズ連携）
-    // ユーザーにGoogleアカウントでのログイン体験を即座に提供
-    const mockUser: UserProfile = {
+    // Googleアカウント模倣の即時ログイン
+    const defaultUser: UserProfile = {
       id: `usr_${Date.now()}`,
       email: 'investor.masa@gmail.com',
       name: 'マサ（投資家）',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+      avatarUrl: AVATAR_PRESETS[0].url,
+      bio: '成長株と好業績バリュー株をAIで監視中。',
+      investorStyle: '現物・スイングトレード',
       isLoggedIn: true,
     };
+    saveUser(defaultUser);
+  };
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(mockUser));
-    }
-    setUser(mockUser);
-    window.dispatchEvent(new Event('kabu_watch_auth_changed'));
+  /**
+   * 新規会員登録（名前・メール・アバター）
+   */
+  const signUp = (name: string, email: string, avatarUrl?: string, investorStyle?: string) => {
+    const newUser: UserProfile = {
+      id: `usr_${Date.now()}`,
+      email: email || `${name.toLowerCase()}@kabu-watch.ai`,
+      name: name.trim() || '新規投資家',
+      avatarUrl: avatarUrl || AVATAR_PRESETS[0].url,
+      bio: '株ウォッチAIで自分専用の持株と仮想売買を追跡中！',
+      investorStyle: investorStyle || '現物長期・高配当狙い',
+      isLoggedIn: true,
+    };
+    saveUser(newUser);
+    return newUser;
+  };
+
+  /**
+   * メールアドレスでのログイン
+   */
+  const signInWithEmail = (email: string, name?: string) => {
+    const newUser: UserProfile = {
+      id: `usr_${Date.now()}`,
+      email: email.trim(),
+      name: name?.trim() || email.split('@')[0] || '投資家メンバー',
+      avatarUrl: AVATAR_PRESETS[1].url,
+      bio: '株式投資・売買シミュレーション中',
+      investorStyle: 'グロース成長株集中',
+      isLoggedIn: true,
+    };
+    saveUser(newUser);
+    return newUser;
+  };
+
+  /**
+   * プロフィール編集（名前、アバター、自己紹介、投資スタイル）
+   */
+  const updateProfile = (updates: Partial<UserProfile>) => {
+    if (!user) return;
+    const updated: UserProfile = {
+      ...user,
+      ...updates,
+      isLoggedIn: true,
+    };
+    saveUser(updated);
+    return updated;
   };
 
   /**
@@ -166,6 +235,9 @@ export function useAuth() {
     loading,
     isLoggedIn: !!user?.isLoggedIn,
     signInWithGoogle,
+    signInWithEmail,
+    signUp,
+    updateProfile,
     signOut,
   };
 }

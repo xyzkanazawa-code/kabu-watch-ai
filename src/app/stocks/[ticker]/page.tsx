@@ -54,7 +54,12 @@ export default function StockCenterPage() {
   const loadStockCenterData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/stocks/${ticker}`);
+      const storedKey = typeof window !== 'undefined' ? localStorage.getItem('gemini_api_key') || '' : '';
+      const headers: Record<string, string> = {};
+      if (storedKey) {
+        headers['x-gemini-key'] = storedKey;
+      }
+      const res = await fetch(`/api/stocks/${ticker}`, { headers });
       const data = await res.json();
 
       setStockInfo(data.stockInfo);

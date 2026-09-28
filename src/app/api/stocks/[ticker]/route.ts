@@ -16,9 +16,11 @@ export async function GET(
     const products = fetchProductList(ticker);
     const globalInfo = fetchGlobalInfo(ticker);
 
-    // AI 銘柄全体総合分析
-    const recentNewsTitles = news.slice(0, 4).map(n => n.title);
-    const aiOverview = await generateStockOverallOverview(ticker, stockInfo.name, recentNewsTitles);
+    const { searchParams } = new URL(request.url);
+    const customApiKey = searchParams.get('apiKey') || request.headers.get('x-gemini-key') || undefined;
+
+    // AI 銘柄全体総合分析（実際の指標・信用残高・最新ニュース・開示を丸ごと投入）
+    const aiOverview = await generateStockOverallOverview(ticker, stockInfo, news, disclosures, customApiKey);
 
     return NextResponse.json({
       stockInfo,

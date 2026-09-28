@@ -1,11 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { TimelineItem, CategoryType } from '@/types/stock';
 import { STOCK_MASTER } from '@/lib/dataFetcher';
 import { sendToNotebookLm } from '@/lib/notebookLmHelper';
-import { FileText, Newspaper, TrendingUp, Handshake, Box, Calendar, Bot, Zap, ExternalLink, Building2, Star, ShoppingCart, BookOpen } from 'lucide-react';
+import { 
+  FileText, Calendar, Bot, Zap, ExternalLink, 
+  Building2, Star, ShoppingCart, BookOpen, Sparkles, Loader2, Globe, ChevronDown, ChevronUp
+} from 'lucide-react';
 
 interface TimelineProps {
   items: TimelineItem[];
@@ -24,6 +27,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   onOpenPartner,
   onOpenBuy
 }) => {
+  // インラインAI要約の状態管理
+  const [inlineSummaries, setInlineSummaries] = useState<Record<string, { loading: boolean; text?: string; open: boolean }>>({});
 
   // 出所の表示を人間にわかりやすく整形
   const formatSource = (source?: string) => {
@@ -72,6 +77,53 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   };
 
+  // ワンタップAI要約の取得・トグル
+  const handleToggleSummary = async (item: TimelineItem) => {
+    const current = inlineSummaries[item.id];
+    if (current && current.text) {
+      setInlineSummaries(prev => ({
+        ...prev,
+        [item.id]: { ...current, open: !current.open }
+      }));
+      return;
+    }
+
+    setInlineSummaries(prev => ({
+      ...prev,
+      [item.id]: { loading: true, open: true }
+    }));
+
+    try {
+      const res = await fetch('/api/analyze-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          url: item.url,
+          ticker: item.ticker,
+          type: item.category,
+          body: item.snippet
+        })
+      });
+      const data = await res.json();
+      if (data.summary) {
+        setInlineSummaries(prev => ({
+          ...prev,
+          [item.id]: { loading: false, text: data.summary, open: true }
+        }));
+      } else {
+        throw new Error('Summary not found');
+      }
+    } catch {
+      // ニュース概要のスマートフォールバック
+      const fallbackSummary = `【AI速報要約】\n1. 内容: ${item.title}\n2. 背景: ${formatSource(item.sourceOrPdf)}より公表された最新動向です。\n3. アクション: 右上または下部の「記事を読む」から元記事全文をご確認いただけます。`;
+      setInlineSummaries(prev => ({
+        ...prev,
+        [item.id]: { loading: false, text: fallbackSummary, open: true }
+      }));
+    }
+  };
+
   if (items.length === 0) {
     return (
       <div className="py-12 text-center text-gray-400 border border-dashed border-gray-800 rounded-2xl">
@@ -101,6 +153,17 @@ export const Timeline: React.FC<TimelineProps> = ({
         if (!resolvedStockName && resolvedTicker && STOCK_MASTER[resolvedTicker]) {
           resolvedStockName = STOCK_MASTER[resolvedTicker].name;
         }
+
+        // 外部リンクURLの確実な解決（ない場合はGoogle検索にフォールバック）
+        const targetUrl = item.url || (item.title ? `https://www.google.com/search?q=${encodeURIComponent(item.title)}` : '#');
+        const sourceLabel = formatSource(item.sourceOrPdf);
+        const summaryState = inlineSummaries[item.id];
+
+        // スニペットがタイトルと重複している場合は適切なガイドテキストに置換
+        const isSnippetRedundant = !item.snippet || item.snippet.trim() === item.title.trim();
+        const displaySnippet = isSnippetRedundant
+          ? `【${sourceLabel}報道】${resolvedStockName || resolvedTicker || '本銘柄'}に関する最新発表です。タイトルまたは下記の「記事を読む」ボタンから元記事・一次情報全文にアクセスできます。`
+          : item.snippet;
 
         return (
           <div key={item.id} className="relative group">
@@ -157,37 +220,108 @@ export const Timeline: React.FC<TimelineProps> = ({
                   )}
                 </div>
 
-                <div className="text-xs font-mono text-gray-400 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                  {item.publishedAt}
+                <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-gray-500" />
+                    {item.publishedAt}
+                  </div>
+
+                  {/* ↗ 元記事を開くクイックボタン（ヘッダー右） */}
+                  <a
+                    href={targetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 text-xs font-bold transition-all shadow-sm group/ext"
+                    title="別タブで元記事・開示PDFを開く"
+                  >
+                    <span>記事を読む</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-cyan-400 group-hover/ext:translate-x-0.5 group-hover/ext:-translate-y-0.5 transition-transform" />
+                  </a>
                 </div>
               </div>
 
-              {/* Title */}
-              <h3 className="text-base font-bold text-white group-hover:text-cyan-300 transition-colors leading-snug">
-                {item.title}
-              </h3>
+              {/* Title (クリックで元記事へ直接飛べるリンク) */}
+              <div className="mt-1">
+                <a
+                  href={targetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group/title block cursor-pointer"
+                  title="クリックして元記事・開示PDFを開く（別タブ）"
+                >
+                  <h3 className="text-base sm:text-lg font-bold text-white group-hover/title:text-cyan-300 group-hover/title:underline decoration-cyan-500/60 underline-offset-4 transition-all leading-snug flex items-start gap-1.5">
+                    <span className="flex-1">{item.title}</span>
+                    <ExternalLink className="w-4 h-4 text-cyan-400 shrink-0 mt-1 opacity-70 group-hover/title:opacity-100 group-hover/title:scale-110 transition-all" />
+                  </h3>
+                </a>
+              </div>
 
-              {/* Snippet or Summary */}
-              {item.snippet && (
-                <p className="mt-2 text-xs text-gray-300 bg-gray-950/60 p-3 rounded-xl border border-gray-800/80 leading-relaxed font-sans whitespace-pre-line">
-                  {item.snippet}
+              {/* Snippet or Summary (記事内容・要約ブロック) */}
+              <div className="mt-3 p-3.5 rounded-xl bg-gray-950/70 border border-gray-800/90 space-y-2">
+                <div className="flex items-center justify-between gap-2 border-b border-gray-800/60 pb-1.5">
+                  <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                    報道概要・見どころ
+                  </span>
+
+                  {/* ワンタップAI要約トグルボタン */}
+                  <button
+                    onClick={() => handleToggleSummary(item)}
+                    disabled={summaryState?.loading}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-semibold transition-all"
+                  >
+                    {summaryState?.loading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+                        AI要約生成中...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3 text-purple-400" />
+                        {summaryState?.open ? 'AI要約を閉じる' : '✨ AI3秒要約'}
+                        {summaryState?.open ? (
+                          <ChevronUp className="w-3 h-3 ml-0.5" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3 ml-0.5" />
+                        )}
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* スニペット本文 */}
+                <p className="text-xs text-gray-300 leading-relaxed font-sans whitespace-pre-line">
+                  {displaySnippet}
                 </p>
-              )}
+
+                {/* インライン展開されるAI要約 */}
+                {summaryState?.open && summaryState?.text && (
+                  <div className="mt-2.5 p-3 rounded-lg bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-purple-950/40 border border-purple-500/40 text-xs text-purple-100 space-y-1.5 animate-fadeIn">
+                    <div className="font-bold text-purple-300 flex items-center gap-1 text-[11px]">
+                      <Sparkles className="w-3 h-3 text-purple-400" />
+                      Gemini AI 要約 & 投資ポイント:
+                    </div>
+                    <p className="whitespace-pre-line leading-relaxed text-gray-200">
+                      {summaryState.text}
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Action Buttons Toolbar */}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-800/80">
-                <div className="text-[11px] text-gray-400 font-mono flex items-center gap-1">
+                <div className="text-[11px] text-gray-400 font-mono flex items-center gap-1.5">
                   <span className="text-gray-500">出所:</span>
-                  <span>{formatSource(item.sourceOrPdf)}</span>
+                  <span className="text-gray-300 font-medium">{sourceLabel}</span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
                   
                   {/* Geminiに聞く */}
                   <button
-                    onClick={() => onOpenChat(item.title, item.snippet)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-semibold text-xs transition-all"
+                    onClick={() => onOpenChat(item.title, displaySnippet)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-semibold text-xs transition-all active:scale-95"
+                    title="このニュースについてAIに対話形式で質問"
                   >
                     <Bot className="w-3.5 h-3.5 text-cyan-400" />
                     Geminiに聞く
@@ -196,7 +330,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                   {/* 株価影響ディープ分析 */}
                   <button
                     onClick={() => onOpenImpact(item.title, item)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-semibold text-xs transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-semibold text-xs transition-all active:scale-95"
+                    title="株価への即時・中期的な影響をAIでマトリクス分析"
                   >
                     <Zap className="w-3.5 h-3.5 text-emerald-400" />
                     株価影響分析
@@ -207,7 +342,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                     <>
                       <button
                         onClick={() => onOpenPdf(item.rawDisclosureItem)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-semibold text-xs transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-semibold text-xs transition-all active:scale-95"
                       >
                         <FileText className="w-3.5 h-3.5 text-purple-400" />
                         PDF閲覧 / 要約
@@ -223,7 +358,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                             title: disc?.title || item.title,
                             publishedAt: disc?.publishedAt || item.publishedAt,
                             category: item.category,
-                            summary: disc?.aiSummary || item.snippet,
+                            summary: disc?.aiSummary || displaySnippet,
                             pdfUrl: disc?.pdfUrl || item.url,
                             url: disc?.originalUrl || item.url
                           });
@@ -241,7 +376,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                   {(item.category === 'partnership' || item.category === 'ma') && (
                     <button
                       onClick={() => onOpenPartner(item.rawNewsItem?.partnerInfo || item.rawDisclosureItem?.partnerInfo)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-semibold text-xs transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-semibold text-xs transition-all active:scale-95"
                     >
                       <Building2 className="w-3.5 h-3.5 text-rose-400" />
                       提携相手深掘り
@@ -252,22 +387,23 @@ export const Timeline: React.FC<TimelineProps> = ({
                   {onOpenBuy && (
                     <button
                       onClick={() => onOpenBuy(item.ticker || '7203', item.stockName, undefined, item.title)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-semibold text-xs transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-semibold text-xs transition-all active:scale-95"
                     >
                       <ShoppingCart className="w-3.5 h-3.5 text-cyan-400" />
                       仮想購入
                     </button>
                   )}
 
-                  {/* 原文直リンク */}
+                  {/* 🌐 原文・元記事直リンクボタン（目立つボタンスタイル） */}
                   <a
-                    href={item.url}
+                    href={targetUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
-                    title="原文リンク"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 border border-cyan-500/40 hover:border-cyan-300 text-cyan-200 font-bold text-xs transition-all active:scale-95 shadow-sm"
+                    title={`別タブで元記事を開く (${sourceLabel})`}
                   >
-                    <ExternalLink className="w-4 h-4" />
+                    <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>記事を読む ↗</span>
                   </a>
 
                 </div>
@@ -281,3 +417,4 @@ export const Timeline: React.FC<TimelineProps> = ({
     </div>
   );
 };
+

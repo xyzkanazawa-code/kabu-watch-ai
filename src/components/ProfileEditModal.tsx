@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth, AVATAR_PRESETS } from '@/lib/useAuth';
-import { X, User, Check, Sparkles, Image, ShieldCheck, Heart, Save, LogOut } from 'lucide-react';
+import { X, User, Check, Sparkles, Image, ShieldCheck, Heart, Save, LogOut, Lock, Eye, EyeOff, Key } from 'lucide-react';
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -26,6 +26,8 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onCl
   const [bio, setBio] = useState('');
   const [investorStyle, setInvestorStyle] = useState('');
   const [customAvatar, setCustomAvatar] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,8 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onCl
       setAvatarUrl(user.avatarUrl || AVATAR_PRESETS[0].url);
       setBio(user.bio || '');
       setInvestorStyle(user.investorStyle || STYLE_OPTIONS[0]);
+      setPassword('');
+      setShowPassword(false);
     }
   }, [user, isOpen]);
 
@@ -41,12 +45,16 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onCl
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({
+    const updates: any = {
       name: name.trim() || user.name,
       avatarUrl: customAvatar.trim() || avatarUrl,
       bio: bio.trim(),
       investorStyle: investorStyle || STYLE_OPTIONS[0],
-    });
+    };
+    if (password.trim()) {
+      updates.password = password.trim();
+    }
+    updateProfile(updates);
     setSavedMessage(true);
     setTimeout(() => {
       setSavedMessage(false);
@@ -202,6 +210,43 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({ isOpen, onCl
               rows={2}
               className="w-full px-3.5 py-2 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs transition-colors resize-none"
             />
+          </div>
+
+          {/* 🔐 パスワードの設定・変更 */}
+          <div className="space-y-1.5 pt-1 border-t border-gray-800/60">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                <span>パスワードの設定・変更</span>
+              </label>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                user?.password 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}>
+                {user?.password ? '● パスワード設定済み' : '▲ パスワード未設定'}
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={user?.password ? '変更したい場合のみ新しいパスワードを入力' : 'パスワードを設定（4文字以上推奨）'}
+                className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs transition-colors placeholder:text-gray-600"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                title={showPassword ? '隠す' : '表示する'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500">
+              ※パスワードを設定しておくと、他の端末や別ブラウザからログインする際のセキュリティ保護になります。
+            </p>
           </div>
 
           {/* 保存ボタン */}

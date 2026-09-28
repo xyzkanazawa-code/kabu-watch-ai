@@ -10,6 +10,7 @@ export interface UserProfile {
   avatarUrl: string;
   bio?: string;
   investorStyle?: string;
+  password?: string;
   isLoggedIn: boolean;
 }
 
@@ -165,9 +166,9 @@ export function useAuth() {
   };
 
   /**
-   * 新規会員登録（名前・メール・アバター）
+   * 新規会員登録（名前・メール・アバター・パスワード）
    */
-  const signUp = (name: string, email: string, avatarUrl?: string, investorStyle?: string) => {
+  const signUp = (name: string, email: string, avatarUrl?: string, investorStyle?: string, password?: string) => {
     const newUser: UserProfile = {
       id: `usr_${Date.now()}`,
       email: email || `${name.toLowerCase()}@kabu-watch.ai`,
@@ -175,6 +176,7 @@ export function useAuth() {
       avatarUrl: avatarUrl || AVATAR_PRESETS[0].url,
       bio: '株ウォッチAIで自分専用の持株と仮想売買を追跡中！',
       investorStyle: investorStyle || '現物長期・高配当狙い',
+      password: password?.trim() || undefined,
       isLoggedIn: true,
     };
     saveUser(newUser);
@@ -184,7 +186,7 @@ export function useAuth() {
   /**
    * メールアドレスでのログイン
    */
-  const signInWithEmail = (email: string, name?: string) => {
+  const signInWithEmail = (email: string, name?: string, password?: string) => {
     const newUser: UserProfile = {
       id: `usr_${Date.now()}`,
       email: email.trim(),
@@ -192,6 +194,7 @@ export function useAuth() {
       avatarUrl: AVATAR_PRESETS[1].url,
       bio: '株式投資・売買シミュレーション中',
       investorStyle: 'グロース成長株集中',
+      password: password?.trim() || undefined,
       isLoggedIn: true,
     };
     saveUser(newUser);

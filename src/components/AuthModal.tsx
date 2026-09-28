@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth, AVATAR_PRESETS } from '@/lib/useAuth';
 import { 
   X, Lock, Sparkles, User, Mail, ShieldCheck, Check, 
-  ArrowRight, Briefcase, Star, ShoppingCart, UserCheck
+  ArrowRight, Briefcase, Star, ShoppingCart, UserCheck, Eye, EyeOff
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -26,6 +26,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // フォームステート
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_PRESETS[0].url);
   const [investorStyle, setInvestorStyle] = useState('現物長期・高配当狙い');
   const [error, setError] = useState('');
@@ -41,14 +43,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setError('お名前（ニックネーム）を入力してください');
         return;
       }
-      signUp(name, email || `${name}@kabu-watch.ai`, selectedAvatar, investorStyle);
+      signUp(name, email || `${name}@kabu-watch.ai`, selectedAvatar, investorStyle, password);
       onClose();
     } else {
       if (!email.trim() && !name.trim()) {
         setError('メールアドレスまたはお名前を入力してください');
         return;
       }
-      signInWithEmail(email || `${name}@kabu-watch.ai`, name);
+      signInWithEmail(email || `${name}@kabu-watch.ai`, name, password);
       onClose();
     }
   };
@@ -175,6 +177,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               placeholder="例: masa@example.com"
               className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
             />
+          </div>
+
+          {/* パスワード入力（任意/設定可） */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-cyan-400" />
+              パスワード <span className="text-[10px] text-gray-500">(任意・後から編集可能)</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="4文字以上のパスワード（省略も可）"
+                className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                title={showPassword ? '隠す' : '表示する'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {/* アバター選択 (新規登録時のみ) */}

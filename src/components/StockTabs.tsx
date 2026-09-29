@@ -46,7 +46,7 @@ export const StockTabs: React.FC<StockTabsProps> = ({
   const { enabledAiList } = useExternalAiSettings();
 
   const handleOpenExternalAi = (ai: ExternalAiItem) => {
-    const prompt = `${stockName}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。`;
+    const prompt = `${stockName}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。5000文字でまとめてください。`;
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(prompt).catch(() => {});
       setCopiedPrompt(ai.name);

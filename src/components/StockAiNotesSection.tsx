@@ -109,6 +109,17 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
   const [authorNameInput, setAuthorNameInput] = useState('');
   const [isCopied, setIsCopied] = useState<string | null>(null);
   const [pasteSuccess, setPasteSuccess] = useState(false);
+  const [isPromptCopied, setIsPromptCopied] = useState(false);
+
+  const defaultQuestionPrompt = `${stockName}（証券コード: ${ticker}）について詳しく教えてください。事業内容や世界シェア、直近の四半期決算の進捗と市場の反応、信用取引の需給状況、今後の株価カタリストやリスクについてプロの視点で解説してください。5000文字でまとめてください。`;
+
+  const handleCopyPrompt = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(defaultQuestionPrompt);
+      setIsPromptCopied(true);
+      setTimeout(() => setIsPromptCopied(false), 3000);
+    }
+  };
 
   useEffect(() => {
     // 1. 即座にローカルキャッシュを表示して体感速度UP
@@ -492,6 +503,36 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* 📋 質問プロンプトのワンタップコピー案内 */}
+              <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>AIへの質問文（5000文字指定）:</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 line-clamp-1">
+                    {defaultQuestionPrompt}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyPrompt}
+                  className="shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all shadow-md active:scale-95"
+                >
+                  {isPromptCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-black" />
+                      <span>コピー完了！</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>質問文をコピー</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* タイトル入力 ＆ 投稿者名 */}

@@ -19,6 +19,56 @@ export default function RumorsPage() {
   const [selectedVerdict, setSelectedVerdict] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'buzz' | 'fakeRisk' | 'credibility'>('buzz');
   const [expandedRumorId, setExpandedRumorId] = useState<string | null>('rumor-1');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 噂データの自動フェッチ＆ローカルストレージ保存分のマージ
+  const fetchLiveRumors = async (force: boolean = false) => {
+    try {
+      const userKey = getStoredApiKey() || '';
+      const url = force ? '/api/rumors?force=true' : '/api/rumors';
+      const res = await fetch(url, {
+        headers: userKey ? { 'x-gemini-key': userKey } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rumors && data.rumors.length > 0) {
+          // ユーザーが以前検証したローカル保存の噂があれば先頭にマージ
+          let localCustomRumors: RumorItem[] = [];
+          try {
+            const raw = localStorage.getItem('kabu_watch_custom_rumors');
+            if (raw) localCustomRumors = JSON.parse(raw);
+          } catch (e) {}
+
+          const merged = [...localCustomRumors, ...data.rumors];
+          // 重複IDの排除
+          const uniqueMap = new Map<string, RumorItem>();
+          merged.forEach((item) => {
+            if (!uniqueMap.has(item.id)) {
+              uniqueMap.set(item.id, item);
+            }
+          });
+          setRumors(Array.from(uniqueMap.values()));
+        }
+        if (data.updatedTime) {
+          setLastUpdated(data.updatedTime);
+        }
+      }
+    } catch (err) {
+      console.error('Fetch live rumors error:', err);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchLiveRumors();
+  }, []);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchLiveRumors(true);
+    setIsRefreshing(false);
+    showToast('🔄 最新の噂とSNSトピックを再スキャンしました！');
+  };
 
   // 自由入力フォーム状態
   const [customTicker, setCustomTicker] = useState('');
@@ -103,8 +153,58 @@ export default function RumorsPage() {
         throw new Error(data.error || '分析に失敗しました。');
       }
 
-      setCustomAnalysisResult(data.analysis);
-      showToast('🤖 AIによる真偽判定が完了しました！');
+      const analysis = data.analysis;
+      setCustomAnalysisResult(analysis);
+
+      // 新規噂アイテムとして一覧の先頭に追加＆永続化
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}`;
+      const newRumorItem: RumorItem = {
+        id: `custom-${Date.now()}`,
+        ticker: analysis.ticker || customTicker || '----',
+        stockName: analysis.stockName || customStockName || 'ユーザー検証銘柄',
+        market: '東証',
+        sector: '検証対象',
+        price: 1500,
+        change: 0,
+        changePercent: 0,
+        title: customRumorContent.slice(0, 50) + (customRumorContent.length > 50 ? '...' : ''),
+        category: analysis.category || 'sns_hype',
+        buzzLevel: '🔥 過熱・大バズ',
+        sourceMedia: customSource || 'ユーザー提供・SNS',
+        detectedDate: todayStr,
+        rumorSummary: customRumorContent,
+        whyBuzzing: {
+          origin: customSource || 'SNS・ネット掲示板',
+          spreadPath: '投資コミュニティでの話題化',
+          marketReaction: 'AI緊急ファクトチェック実施'
+        },
+        aiVerdict: {
+          verdict: analysis.verdict,
+          credibilityScore: analysis.credibilityScore,
+          fakeRiskScore: analysis.fakeRiskScore,
+          headline: analysis.headline,
+          factCheckPoints: {
+            officialStatus: analysis.officialStatusCheck,
+            sourceReliability: analysis.sourceReliabilityAnalysis,
+            technicalFeasibility: analysis.feasibilityAnalysis
+          },
+          aiWarning: analysis.aiInvestmentWarning,
+          recommendedAction: 'avoid_fomo'
+        }
+      };
+
+      setRumors((prev) => {
+        const next = [newRumorItem, ...prev];
+        try {
+          const raw = localStorage.getItem('kabu_watch_custom_rumors');
+          const current: RumorItem[] = raw ? JSON.parse(raw) : [];
+          localStorage.setItem('kabu_watch_custom_rumors', JSON.stringify([newRumorItem, ...current].slice(0, 20)));
+        } catch (e) {}
+        return next;
+      });
+
+      showToast('🤖 AIによる真偽判定が完了し、噂リストに追加しました！');
     } catch (err: any) {
       setAnalysisError(err.message || '分析中にエラーが発生しました。');
     } finally {
@@ -141,17 +241,39 @@ export default function RumorsPage() {
       {/* ヒーローヘッダー */}
       <div className="relative border-b border-slate-800 bg-gradient-to-b from-rose-950/30 via-slate-900 to-slate-950 px-4 py-10 sm:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold mb-3">
-            <Flame className="w-4 h-4 animate-pulse text-rose-500" />
-            SNS・市場思惑 ＆ AIファクトチェック
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold mb-3">
+                <Flame className="w-4 h-4 animate-pulse text-rose-500" />
+                SNS・市場思惑 ＆ AIファクトチェック
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
+                🔥 噂の株 ＆ AI真偽判定センター
+              </h1>
+              <p className="mt-2 text-slate-400 text-sm sm:text-base max-w-3xl leading-relaxed">
+                X（旧Twitter）やネット掲示板、サプライチェーンで囁かれる「新製品リーク」「大手提携」「急騰煽り」を徹底集約。
+                なぜ噂になっているのかの背景と、<strong className="text-white">「ガセなのか？裏付けはあるのか？」をAIがファクトチェック判定</strong>します。
+              </p>
+            </div>
+
+            <div className="flex sm:flex-col items-start sm:items-end gap-2 shrink-0">
+              {lastUpdated && (
+                <span className="text-[11px] font-medium text-slate-400 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                  最終スキャン: <strong className="text-rose-400 font-mono">{lastUpdated}</strong>
+                </span>
+              )}
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className={`px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-900/30 transition-all ${
+                  isRefreshing ? 'animate-pulse opacity-80' : ''
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? '市場スキャン中...' : '最新の噂をスキャン'}
+              </button>
+            </div>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
-            🔥 噂の株 ＆ AI真偽判定センター
-          </h1>
-          <p className="mt-2 text-slate-400 text-sm sm:text-base max-w-3xl leading-relaxed">
-            X（旧Twitter）やネット掲示板、サプライチェーンで囁かれる「新製品リーク」「大手提携」「急騰煽り」を徹底集約。
-            なぜ噂になっているのかの背景と、<strong className="text-white">「ガセなのか？裏付けはあるのか？」をAIがファクトチェック判定</strong>します。
-          </p>
 
           {/* クイック統計バッジ */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -37,18 +37,30 @@ export default function RankingsPage() {
     newsTitle?: string;
   } | null>(null);
 
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
   useEffect(() => {
     setFavorites(getFavorites());
     fetchRankings();
   }, []);
 
-  const fetchRankings = async () => {
-    setLoading(true);
+  const fetchRankings = async (force: boolean = false) => {
+    if (!force) setLoading(true);
     try {
-      const res = await fetch('/api/market-rankings');
+      const userKey = typeof window !== 'undefined' ? localStorage.getItem('kabu_watch_gemini_api_key') || '' : '';
+      const url = force ? '/api/market-rankings?force=true' : '/api/market-rankings';
+      const res = await fetch(url, {
+        headers: userKey ? { 'x-gemini-key': userKey } : {},
+      });
       const data = await res.json();
       if (data.rankings) {
         setRankingsData(data.rankings);
+      }
+      if (data.updated_time) {
+        setLastUpdated(data.updated_time);
+      } else {
+        const d = new Date();
+        setLastUpdated(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
       }
     } catch (err) {
       console.error(err);
@@ -59,7 +71,7 @@ export default function RankingsPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchRankings();
+    await fetchRankings(true);
     setIsRefreshing(false);
   };
 
@@ -110,6 +122,11 @@ export default function RankingsPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {lastUpdated && (
+              <span className="text-[11px] font-medium text-gray-400 bg-gray-900/80 px-2.5 py-1.5 rounded-lg border border-gray-800">
+                最終取得: <strong className="text-cyan-400 font-mono">{lastUpdated}</strong>
+              </span>
+            )}
             <button
               onClick={handleRefresh}
               className={`px-4 py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-gray-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-all ${

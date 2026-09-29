@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth, AVATAR_PRESETS } from '@/lib/useAuth';
 import { 
   X, Lock, Sparkles, User, Mail, ShieldCheck, Check, 
-  ArrowRight, Briefcase, Star, ShoppingCart, UserCheck, Eye, EyeOff
+  ArrowRight, Briefcase, Star, ShoppingCart, UserCheck 
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -20,14 +20,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'signup',
   message
 }) => {
-  const { signInWithGoogle, signInWithEmail, signUp } = useAuth();
+  const { signInWithEmail, signUp } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   
   // フォームステート
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_PRESETS[0].url);
   const [investorStyle, setInvestorStyle] = useState('現物長期・高配当狙い');
   const [error, setError] = useState('');
@@ -38,25 +37,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setError('');
 
+    const targetEmail = email.trim();
+    const targetName = name.trim();
+
+    if (!targetEmail && !targetName) {
+      setError('Gmail / メールアドレスまたはお名前を入力してください');
+      return;
+    }
+
+    // Gmailからニックネームを自動推定
+    const resolvedName = targetName || (targetEmail.includes('@') ? targetEmail.split('@')[0] : targetEmail);
+    const resolvedEmail = targetEmail || `${resolvedName}@gmail.com`;
+
     if (mode === 'signup') {
-      if (!name.trim()) {
-        setError('お名前（ニックネーム）を入力してください');
-        return;
-      }
-      signUp(name, email || `${name}@kabu-watch.ai`, selectedAvatar, investorStyle, password);
+      signUp(resolvedName, resolvedEmail, selectedAvatar, investorStyle, password);
       onClose();
     } else {
-      if (!email.trim() && !name.trim()) {
-        setError('メールアドレスまたはお名前を入力してください');
-        return;
-      }
-      signInWithEmail(email || `${name}@kabu-watch.ai`, name, password);
+      signInWithEmail(resolvedEmail, resolvedName, password);
       onClose();
     }
   };
 
-  const handleDemoLogin = (demoName: string) => {
-    signUp(demoName, `${demoName.toLowerCase()}@kabu-watch.ai`, AVATAR_PRESETS[0].url, '現物長期・高配当狙い');
+  const handleDemoLogin = (demoName: string, demoEmail: string) => {
+    signInWithEmail(demoEmail, demoName);
     onClose();
   };
 
@@ -118,29 +121,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </div>
 
-        {/* Googleワンタップボタン */}
-        <button
-          type="button"
-          onClick={async () => {
-            await signInWithGoogle();
-            onClose();
-          }}
-          className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs flex items-center justify-center gap-2.5 shadow-md shadow-white/10 active:scale-95 transition-all mb-4"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
-            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-          </svg>
-          <span>Googleアカウントでログイン</span>
-        </button>
-
-        <div className="relative flex items-center justify-center my-4">
-          <div className="border-t border-gray-800 w-full" />
-          <span className="bg-[#111827] px-3 text-[11px] text-gray-500 font-mono uppercase">またはお名前で簡単登録</span>
-        </div>
-
         {/* フォーム */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
@@ -149,59 +129,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* 名前入力 */}
+          {/* Gmail / メールアドレス入力（最優先入力） */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-cyan-400" />
-              お名前 / ニックネーム
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="例: マサ（投資家）"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
-            />
-          </div>
-
-          {/* メールアドレス入力（任意） */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5 text-cyan-400" />
-              メールアドレス {mode === 'signup' && <span className="text-[10px] text-gray-500">(任意・省略可)</span>}
+            <label className="text-xs font-bold text-gray-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                Gmail / メールアドレス
+              </span>
+              <span className="text-[10px] text-cyan-400 font-normal">Gmailですぐ登録・ログイン</span>
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="例: masa@example.com"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
+              placeholder="例: masa@gmail.com"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-cyan-500/30 focus:border-cyan-400 focus:outline-none text-white text-xs placeholder-gray-500 transition-colors shadow-inner"
+              autoFocus
             />
           </div>
 
-          {/* パスワード入力（任意/設定可） */}
+          {/* 名前入力（任意） */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-cyan-400" />
-              パスワード <span className="text-[10px] text-gray-500">(任意・後から編集可能)</span>
+            <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-cyan-400" />
+                お名前 / ニックネーム
+              </span>
+              <span className="text-[10px] text-gray-500 font-normal">(空欄ならGmail名を使用)</span>
             </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="4文字以上のパスワード（省略も可）"
-                className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                title={showPassword ? '隠す' : '表示する'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例: マサ"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:outline-none text-white text-xs placeholder-gray-600 transition-colors"
+            />
           </div>
 
           {/* アバター選択 (新規登録時のみ) */}
@@ -245,23 +207,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* 送信ボタン */}
           <button
             type="submit"
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>{mode === 'signup' ? '無料で会員登録してはじめる' : 'ログインする'}</span>
+            <Mail className="w-4 h-4" />
+            <span>{mode === 'signup' ? 'Gmailで無料登録してはじめる' : 'Gmailでログインする'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
         {/* クイックワンタップ・デモ登録 */}
         <div className="mt-5 pt-4 border-t border-gray-800/80 text-center">
-          <p className="text-[11px] text-gray-500 mb-2">すぐに試したい方はこちら</p>
+          <p className="text-[11px] text-gray-500 mb-2">入力なしですぐに試したい方はこちら</p>
           <button
             type="button"
-            onClick={() => handleDemoLogin('マサ（投資家）')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-cyan-500/50 text-cyan-300 text-xs font-semibold transition-all"
+            onClick={() => handleDemoLogin('マサ（投資家）', 'investor.masa@gmail.com')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-cyan-500/50 text-cyan-300 text-xs font-semibold transition-all cursor-pointer shadow-md"
           >
-            <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span>「マサ（投資家）」として1秒でログイン</span>
+            <UserCheck className="w-4 h-4 text-cyan-400" />
+            <span>「マサ（投資家）」としてワンタップログイン</span>
           </button>
         </div>
 

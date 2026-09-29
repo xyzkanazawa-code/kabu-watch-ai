@@ -3,59 +3,48 @@ import { STOCK_MASTER } from '@/lib/dataFetcher';
 
 export const dynamic = 'force-dynamic';
 
-// サーバー内メモリキャッシュ (ティッカー毎に10分間キャッシュ)
+// サーバー内メモリキャッシュ (頻繁なリクエスト緩和用、15秒間キャッシュ)
 interface CacheEntry {
   data: {
     ticker: string;
     name: string;
     sector: string;
     price: number;
+    change: number;
     changePercent: number;
+    prevClose: number;
+    pts?: { price: number; change: number; changePercent: number; time?: string };
     isRealLookup: boolean;
   };
   timestamp: number;
 }
 
 const lookupCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10分
+const CACHE_TTL_MS = 15 * 1000; // 15秒（取引時間中・引け後の即時性を重視）
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const rawTicker = searchParams.get('ticker') || '';
+    const force = searchParams.get('force') === 'true';
     const ticker = rawTicker.trim().toUpperCase();
 
     if (!ticker) {
       return NextResponse.json({ error: 'Ticker is required' }, { status: 400 });
     }
 
-    // キャッシュチェック
-    const cached = lookupCache.get(ticker);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return NextResponse.json({ ...cached.data, cached: true });
+    // キャッシュチェック（force指定がない場合）
+    if (!force) {
+      const cached = lookupCache.get(ticker);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return NextResponse.json({ ...cached.data, cached: true });
+      }
     }
 
-    // 1. STOCK_MASTER をチェック
-    if (STOCK_MASTER[ticker]) {
-      const s = STOCK_MASTER[ticker];
-      const result = {
-        ticker: s.ticker,
-        name: s.name,
-        sector: s.sector,
-        price: s.price,
-        changePercent: s.changePercent,
-        pts: s.pts,
-        isRealLookup: true,
-      };
-      lookupCache.set(ticker, { data: result, timestamp: Date.now() });
-      return NextResponse.json(result);
-    }
-
-
-    // 2. Yahoo!ファイナンス (国内東証) から正式企業名と株価を取得
+    // 1. Yahoo!ファイナンス (国内東証) からリアルタイムに当日の最新終値・前日終値を取得
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const timeout = setTimeout(() => controller.abort(), 4500);
       const res = await fetch(`https://finance.yahoo.co.jp/quote/${ticker}.T`, {
         signal: controller.signal,
         headers: {
@@ -69,10 +58,8 @@ export async function GET(request: NextRequest) {
       if (res.ok) {
         const html = await res.text();
 
-        // 社名の抽出 (タイトルタグ優先、なければh1)
+        // 社名の抽出
         let extractedName = '';
-
-        // 例: <title>(株)ソシオネクスト【6526】：株価・株式情報（夜間PTS含む） - Yahoo!ファイナンス</title>
         const titleMatch = html.match(/<title>([^<]+)<\/title>/);
         if (titleMatch && titleMatch[1]) {
           const fullTitle = titleMatch[1];
@@ -87,7 +74,6 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // タイトルで取れなかった場合のh1フォールバック
         if (!extractedName) {
           const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
           if (h1Match && h1Match[1]) {
@@ -98,7 +84,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // 株価の抽出
+        // 現在値・当日の終値の抽出
         const priceMatch = html.match(/_CommonPriceBoard[\s\S]*?_StyledNumber__value[^\"]*">([0-9,.]+)/) ||
                            html.match(/<span class="[^"]*price[^"]*">([0-9,.]+)<\/span>/i);
         const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
@@ -106,7 +92,17 @@ export async function GET(request: NextRequest) {
         // 前日比の抽出
         const changeMatch = html.match(/_PriceChangeLabel__primary[\s\S]*?_StyledNumber__value[^\"]*">([+\-0-9,.]+)/);
         const change = changeMatch ? parseFloat(changeMatch[1].replace(/,/g, '')) : 0;
-        const changePercent = price > 0 && change !== 0 ? parseFloat(((change / (price - change)) * 100).toFixed(2)) : 0;
+
+        // 前日終値の抽出 (表内の「前日終値」または price - change)
+        let prevClose = 0;
+        const prevCloseMatch = html.match(/前日終値<\/span>[\s\S]*?_StyledNumber__value[^\"]*">([0-9,.]+)/);
+        if (prevCloseMatch && prevCloseMatch[1]) {
+          prevClose = parseFloat(prevCloseMatch[1].replace(/,/g, ''));
+        } else if (price > 0) {
+          prevClose = price - change;
+        }
+
+        const changePercent = prevClose > 0 ? parseFloat(((change / prevClose) * 100).toFixed(2)) : 0;
 
         // 🌙 夜間PTS取引情報の抽出
         let pts: { price: number; change: number; changePercent: number; time?: string } | undefined = undefined;
@@ -145,32 +141,53 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        if (extractedName) {
+        if (price > 0) {
+          const s = STOCK_MASTER[ticker];
           const result = {
             ticker,
-            name: extractedName,
-            sector: '東証上場銘柄',
-            price: price > 0 ? price : 1000,
+            name: extractedName || s?.name || `銘柄 (${ticker})`,
+            sector: s?.sector || '東証上場銘柄',
+            price,
+            change,
             changePercent,
+            prevClose: prevClose > 0 ? prevClose : price,
             pts,
             isRealLookup: true,
           };
           lookupCache.set(ticker, { data: result, timestamp: Date.now() });
           return NextResponse.json(result);
         }
-
       }
     } catch (scrapeErr) {
       console.warn(`[stock-lookup API] Yahoo finance fetch failed for ${ticker}:`, scrapeErr);
     }
 
-    // 3. フォールバック
+    // 2. Yahoo!ファイナンス取得失敗時のフォールバック (STOCK_MASTER)
+    if (STOCK_MASTER[ticker]) {
+      const s = STOCK_MASTER[ticker];
+      const result = {
+        ticker: s.ticker,
+        name: s.name,
+        sector: s.sector,
+        price: s.price,
+        change: s.change || 0,
+        changePercent: s.changePercent || 0,
+        prevClose: s.prevClose || s.price,
+        pts: s.pts,
+        isRealLookup: false,
+      };
+      return NextResponse.json(result);
+    }
+
+    // 3. 一般フォールバック
     const fallbackResult = {
       ticker,
       name: `東証銘柄 (${ticker})`,
       sector: '東証上場銘柄',
       price: 1000,
+      change: 0,
       changePercent: 0,
+      prevClose: 1000,
       isRealLookup: false,
     };
     return NextResponse.json(fallbackResult);

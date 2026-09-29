@@ -1,5 +1,6 @@
 import { PortfolioItem } from '@/types/stock';
 import { STOCK_MASTER } from './dataFetcher';
+import { lookupStockByTicker } from './stockLookup';
 
 const PORTFOLIO_STORAGE_KEY = 'kabu_watch_ai_portfolio_v1';
 const HISTORY_STORAGE_KEY = 'kabu_watch_ai_trade_history_v1';
@@ -302,7 +303,7 @@ export function getDefaultMarginExpiryDate(fromDateStr?: string): string {
 }
 
 /**
- * 株価をSTOCK_MASTER等の最新値で更新
+ * 株価をSTOCK_MASTER等の初期値で同期（同期キャッシュ）
  */
 export function syncPortfolioPrices(items: PortfolioItem[]): PortfolioItem[] {
   return items.map((item) => {
@@ -310,10 +311,57 @@ export function syncPortfolioPrices(items: PortfolioItem[]): PortfolioItem[] {
     if (master) {
       return {
         ...item,
-        currentPrice: master.price,
-        prevClose: master.prevClose,
+        currentPrice: item.currentPrice || master.price,
+        prevClose: item.prevClose || master.prevClose,
       };
     }
     return item;
   });
+}
+
+/**
+ * ⚡ 保有ポジションの全銘柄を東証の最新終値・リアルタイム株価で完全同期
+ */
+export async function syncPortfolioWithRealtimePrices(
+  items: PortfolioItem[],
+  forceRefresh: boolean = false
+): Promise<PortfolioItem[]> {
+  if (!items || items.length === 0) return [];
+
+  // ユニークなティッカー一覧を抽出
+  const uniqueTickers = Array.from(new Set(items.map((i) => i.ticker)));
+  const priceMap = new Map<string, { price: number; prevClose?: number; name?: string }>();
+
+  await Promise.all(
+    uniqueTickers.map(async (ticker) => {
+      try {
+        const stockData = await lookupStockByTicker(ticker, forceRefresh);
+        if (stockData && stockData.price > 0) {
+          priceMap.set(ticker, {
+            price: stockData.price,
+            prevClose: stockData.prevClose ?? stockData.price,
+            name: stockData.name,
+          });
+        }
+      } catch (err) {
+        console.warn(`[syncPortfolioWithRealtimePrices] Failed for ${ticker}:`, err);
+      }
+    })
+  );
+
+  const updatedItems = items.map((item) => {
+    const latest = priceMap.get(item.ticker);
+    if (latest && latest.price > 0) {
+      return {
+        ...item,
+        currentPrice: latest.price,
+        prevClose: latest.prevClose ?? item.prevClose ?? latest.price,
+        name: (item.name.startsWith('銘柄 (') && latest.name) ? latest.name : item.name,
+      };
+    }
+    return item;
+  });
+
+  savePortfolioItems(updatedItems);
+  return updatedItems;
 }

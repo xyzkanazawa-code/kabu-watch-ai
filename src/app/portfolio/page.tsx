@@ -9,6 +9,7 @@ import { SemanticSearchModal } from '@/components/SemanticSearchModal';
 import { 
   getPortfolioItems, removePortfolioItem, settlePortfolioItem, 
   calcItemPnL, getDaysUntilExpiry, syncPortfolioPrices,
+  syncPortfolioWithRealtimePrices,
   togglePortfolioItemType
 } from '@/lib/portfolioStorage';
 import { PortfolioItem, PortfolioAuditResult } from '@/types/stock';
@@ -23,7 +24,7 @@ import {
   Briefcase, TrendingUp, TrendingDown, Sparkles, Bot, Plus, 
   Trash2, CheckCircle2, Clock, AlertTriangle, RefreshCw, 
   Calendar, ArrowRight, ShieldCheck, ShoppingCart, Star, Eye, Info, Moon,
-  ArrowLeftRight, Lock, User, LogIn, Award
+  ArrowLeftRight, Lock, User, LogIn, Award, Check
 } from 'lucide-react';
 
 interface WatchStockItem {
@@ -45,6 +46,7 @@ export default function PortfolioPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // モーダル管理
   const [buyModalTarget, setBuyModalTarget] = useState<{
@@ -68,11 +70,19 @@ export default function PortfolioPage() {
     loadWatchStocks(favs);
   }, []);
 
-  const loadPortfolio = () => {
+  // ポートフォリオ読み込み：即時キャッシュ表示 ＋ 非同期で今日の最新終値に自動同期
+  const loadPortfolio = async () => {
     const loaded = getPortfolioItems();
-    // 最新株価と同期
     const synced = syncPortfolioPrices(loaded);
     setItems(synced);
+
+    // ⚡ サーバーから最新のリアルタイム終値をバックグラウンドで完全同期
+    try {
+      const realTimeUpdated = await syncPortfolioWithRealtimePrices(loaded);
+      setItems(realTimeUpdated);
+    } catch (e) {
+      console.warn('Realtime portfolio sync error:', e);
+    }
   };
 
   const loadWatchStocks = async (favTickers: string[]) => {
@@ -117,39 +127,29 @@ export default function PortfolioPage() {
     });
     setWatchStocks(initialList);
 
-    // 2. 非同期でリアルタイム株価＆社名を完全同期
+    // 2. 非同期で今日の最新リアルタイム株価＆社名を完全同期
     try {
       const promises = favTickers.map(async (t) => {
-        if (STOCK_MASTER[t]) {
-          return {
-            ticker: t,
-            name: STOCK_MASTER[t].name,
-            price: STOCK_MASTER[t].price,
-            changePercent: STOCK_MASTER[t].changePercent,
-            sector: STOCK_MASTER[t].sector,
-            pts: STOCK_MASTER[t].pts,
-          };
-        }
-        const looked = await lookupStockByTicker(t);
+        const looked = await lookupStockByTicker(t, true);
         const resolvedName = (looked && looked.name && !looked.name.startsWith('東証銘柄 ('))
           ? looked.name 
-          : (metas[t]?.name || `銘柄 (${t})`);
+          : (metas[t]?.name || STOCK_MASTER[t]?.name || `銘柄 (${t})`);
 
         saveFavoriteMeta(t, {
           ticker: t,
           name: resolvedName,
-          sector: looked?.sector || metas[t]?.sector,
-          price: looked?.price || metas[t]?.price,
-          changePercent: looked?.changePercent ?? metas[t]?.changePercent,
+          sector: looked?.sector || metas[t]?.sector || STOCK_MASTER[t]?.sector,
+          price: looked?.price || metas[t]?.price || STOCK_MASTER[t]?.price,
+          changePercent: looked?.changePercent ?? metas[t]?.changePercent ?? STOCK_MASTER[t]?.changePercent,
         });
 
         return {
           ticker: t,
           name: resolvedName,
-          price: looked?.price || metas[t]?.price || 1000,
-          changePercent: looked?.changePercent ?? metas[t]?.changePercent ?? 0,
-          sector: looked?.sector || metas[t]?.sector || '東証上場銘柄',
-          pts: looked?.pts,
+          price: looked?.price || metas[t]?.price || STOCK_MASTER[t]?.price || 1000,
+          changePercent: looked?.changePercent ?? metas[t]?.changePercent ?? STOCK_MASTER[t]?.changePercent ?? 0,
+          sector: looked?.sector || metas[t]?.sector || STOCK_MASTER[t]?.sector || '東証上場銘柄',
+          pts: looked?.pts || STOCK_MASTER[t]?.pts,
         };
       });
 
@@ -162,20 +162,28 @@ export default function PortfolioPage() {
     }
   };
 
-
-
   const handleRemoveFavorite = (ticker: string) => {
     const next = removeFavorite(ticker);
     setFavorites(next);
     setWatchStocks((prev) => prev.filter((s) => s.ticker !== ticker));
   };
 
-  const handleRefreshPrices = () => {
+  // 🔄 最新終値の手動更新ボタン
+  const handleRefreshPrices = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      loadPortfolio();
+    setSyncMessage(null);
+    try {
+      const current = getPortfolioItems();
+      const updated = await syncPortfolioWithRealtimePrices(current, true);
+      setItems(updated);
+      await loadWatchStocks(favorites);
+      setSyncMessage('東証の最新終値に更新しました！');
+      setTimeout(() => setSyncMessage(null), 4000);
+    } catch (e) {
+      console.error('Refresh prices error:', e);
+    } finally {
       setIsSyncing(false);
-    }, 600);
+    }
   };
 
   const handleRemove = (id: string, name: string) => {
@@ -402,13 +410,21 @@ export default function PortfolioPage() {
             {/* 株価更新ボタン */}
             <button
               onClick={handleRefreshPrices}
-              className={`p-2.5 rounded-xl bg-gray-900 border border-gray-800 text-gray-300 hover:text-white transition-all ${
-                isSyncing ? 'animate-spin' : ''
-              }`}
-              title="最新株価を再取得"
+              disabled={isSyncing}
+              className={`px-3 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-cyan-500/50 text-gray-200 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50`}
+              title="東証の今日の最新終値をリアルタイム再取得"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? '終値更新中...' : '株価更新'}</span>
             </button>
+
+            {/* 同期完了トースト */}
+            {syncMessage && (
+              <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/90 px-3 py-1.5 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                {syncMessage}
+              </span>
+            )}
 
             {/* 🏦 実保有株を登録ボタン */}
             <button

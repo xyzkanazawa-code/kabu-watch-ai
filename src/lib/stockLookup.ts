@@ -217,44 +217,35 @@ export function extractTickerCode(input: string): string | null {
 
 // 証券コードから会社名・詳細を確実に特定する（ローカルマスター＋Yahooファイナンスオンラインフォールバック）
 // 小文字（130a）でも大文字（130A）でも自動正規化
-export async function lookupStockByTicker(tickerInput: string): Promise<{
+export async function lookupStockByTicker(tickerInput: string, forceRefresh: boolean = false): Promise<{
   ticker: string;
   name: string;
   sector: string;
   price: number;
+  change?: number;
   changePercent?: number;
+  prevClose?: number;
   pts?: PtsInfo;
   isRealLookup: boolean;
 }> {
   const ticker = extractTickerCode(tickerInput) || tickerInput.trim().toUpperCase();
 
-  // 1. 登録済みマスターにある場合
-  if (STOCK_MASTER[ticker]) {
-    const s = STOCK_MASTER[ticker];
-    return {
-      ticker: s.ticker,
-      name: s.name,
-      sector: s.sector,
-      price: s.price,
-      changePercent: s.changePercent,
-      pts: s.pts,
-      isRealLookup: true
-    };
-  }
-
-  // 2. ブラウザ環境の場合: CORS制約を回避するため自前のNext.js APIルートを呼ぶ
+  // 1. ブラウザ環境の場合: リアルタイム株価APIルートを呼ぶ
   if (typeof window !== 'undefined') {
     try {
-      const res = await fetch(`/api/stock-lookup?ticker=${encodeURIComponent(ticker)}`);
+      const forceParam = forceRefresh ? '&force=true' : '';
+      const res = await fetch(`/api/stock-lookup?ticker=${encodeURIComponent(ticker)}${forceParam}`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.name && !data.name.includes('東証銘柄 (')) {
+        if (data && data.price && data.price > 0) {
           return {
             ticker: data.ticker || ticker,
-            name: data.name,
-            sector: data.sector || '東証上場銘柄',
-            price: Number(data.price) || 1000,
+            name: data.name || STOCK_MASTER[ticker]?.name || `銘柄 (${ticker})`,
+            sector: data.sector || STOCK_MASTER[ticker]?.sector || '東証上場銘柄',
+            price: Number(data.price),
+            change: data.change !== undefined ? Number(data.change) : undefined,
             changePercent: Number(data.changePercent) || 0,
+            prevClose: data.prevClose ? Number(data.prevClose) : Number(data.price),
             pts: data.pts,
             isRealLookup: Boolean(data.isRealLookup),
           };
@@ -263,6 +254,22 @@ export async function lookupStockByTicker(tickerInput: string): Promise<{
     } catch (apiErr) {
       console.warn(`[lookupStockByTicker] Client API fetch failed for ${ticker}:`, apiErr);
     }
+  }
+
+  // 2. 登録済みマスター（API取得失敗時やオフライン時のフォールバック）
+  if (STOCK_MASTER[ticker]) {
+    const s = STOCK_MASTER[ticker];
+    return {
+      ticker: s.ticker,
+      name: s.name,
+      sector: s.sector,
+      price: s.price,
+      change: s.change,
+      changePercent: s.changePercent,
+      prevClose: s.prevClose || s.price,
+      pts: s.pts,
+      isRealLookup: false
+    };
   }
 
 

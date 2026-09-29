@@ -184,36 +184,80 @@ export function updatePortfolioItemType(id: string, newType: 'real' | 'simulatio
 }
 
 /**
- * 損益計算ヘルパー
+ * 損益計算ヘルパー（現物・信用の金融実務に即した正確な純資産・元本計算）
  */
 export function calcItemPnL(item: PortfolioItem): {
-  investment: number;      // 投資元本
-  currentValue: number;    // 現在時価
-  pnlAmount: number;       // 損益額 (円)
-  pnlPercent: number;      // 損益率 (%)
-  dailyChangeAmount: number; // 本日増減 (円)
+  investment: number;         // 実質投資元本（現物は買付満額、信用は約30%の必要委託保証金）
+  positionValue: number;      // 建玉総額・約定代金（借入金を含むポジション規模）
+  currentValue: number;       // 実質純資産評価額（現物は時価、信用は保証金＋含み損益）
+  pnlAmount: number;          // 損益額 (円)
+  pnlPercent: number;         // 買値に対する騰落率 (%)
+  dailyChangeAmount: number;  // 本日増減 (円)
+  isMargin: boolean;          // 信用取引フラグ
+  marginDeposit: number;      // 信用必要委託保証金（30%）
 } {
   const shares = item.shares || 1;
   const entryPrice = item.entryPrice || 1;
   const currentPrice = item.currentPrice || entryPrice;
   const prevClose = item.prevClose || currentPrice;
 
-  const investment = entryPrice * shares;
+  const fullPositionValue = entryPrice * shares;
+  const isMargin = item.tradeType === 'margin_buy' || item.tradeType === 'margin_sell';
+  const marginDeposit = isMargin ? Math.round(fullPositionValue * 0.3) : 0;
 
   if (item.tradeType === 'margin_sell') {
     // 信用売りの場合：株価が下がると利益
     const pnlAmount = (entryPrice - currentPrice) * shares;
     const pnlPercent = ((entryPrice - currentPrice) / entryPrice) * 100;
-    const currentValue = investment + pnlAmount;
+    // 投資元本は手出しの信用保証金（30%）、純資産は保証金＋評価損益
+    const investment = marginDeposit;
+    const currentValue = marginDeposit + pnlAmount;
     const dailyChangeAmount = (prevClose - currentPrice) * shares;
-    return { investment, currentValue, pnlAmount, pnlPercent, dailyChangeAmount };
-  } else {
-    // 現物 または 信用買いの場合
+    return {
+      investment,
+      positionValue: fullPositionValue,
+      currentValue,
+      pnlAmount,
+      pnlPercent,
+      dailyChangeAmount,
+      isMargin: true,
+      marginDeposit,
+    };
+  } else if (item.tradeType === 'margin_buy') {
+    // 信用買いの場合：株価が上がると利益
     const pnlAmount = (currentPrice - entryPrice) * shares;
     const pnlPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
-    const currentValue = currentPrice * shares;
+    // 投資元本は手出しの信用保証金（30%）、純資産は保証金＋評価損益
+    const investment = marginDeposit;
+    const currentValue = marginDeposit + pnlAmount;
     const dailyChangeAmount = (currentPrice - prevClose) * shares;
-    return { investment, currentValue, pnlAmount, pnlPercent, dailyChangeAmount };
+    return {
+      investment,
+      positionValue: fullPositionValue,
+      currentValue,
+      pnlAmount,
+      pnlPercent,
+      dailyChangeAmount,
+      isMargin: true,
+      marginDeposit,
+    };
+  } else {
+    // 現物保有の場合：買付代金の100%が投資元本、現在株価×株数が評価額
+    const investment = fullPositionValue;
+    const currentValue = currentPrice * shares;
+    const pnlAmount = (currentPrice - entryPrice) * shares;
+    const pnlPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
+    const dailyChangeAmount = (currentPrice - prevClose) * shares;
+    return {
+      investment,
+      positionValue: currentValue,
+      currentValue,
+      pnlAmount,
+      pnlPercent,
+      dailyChangeAmount,
+      isMargin: false,
+      marginDeposit: 0,
+    };
   }
 }
 

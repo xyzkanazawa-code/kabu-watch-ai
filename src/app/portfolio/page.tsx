@@ -230,16 +230,32 @@ export default function PortfolioPage() {
     return item.type === activeTab;
   });
 
-  // サマリー集計（タブに連動して実保有・仮想・合算を分離計算）
-  let totalInvestment = 0;
-  let totalCurrentValue = 0;
-  let totalDailyChange = 0;
+  // サマリー集計（現物株の買付額と、信用取引の必要保証金30%・含み損益を厳密に分離計算）
+  let totalInvestment = 0;      // 実質手出し投資元本（現物買付額 ＋ 信用必要保証金30%）
+  let totalCurrentValue = 0;     // 実質純資産評価額（現物時価 ＋ 信用保証金＆含み損益）
+  let totalDailyChange = 0;      // 本日前日比増減
+  let totalSpotInvestment = 0;   // 現物投資元本
+  let totalSpotValue = 0;        // 現物保有時価
+  let totalMarginPosition = 0;   // 信用建玉代金総額（借入金を含むポジション規模）
+  let totalMarginDeposit = 0;    // 信用必要委託保証金（30%）
+  let totalMarginPnL = 0;        // 信用建玉の評価損益
+  let marginCount = 0;           // 信用建玉数
 
   filteredItems.forEach((item) => {
     const pnl = calcItemPnL(item);
     totalInvestment += pnl.investment;
     totalCurrentValue += pnl.currentValue;
     totalDailyChange += pnl.dailyChangeAmount;
+
+    if (pnl.isMargin) {
+      marginCount++;
+      totalMarginPosition += pnl.positionValue;
+      totalMarginDeposit += pnl.marginDeposit;
+      totalMarginPnL += pnl.pnlAmount;
+    } else {
+      totalSpotInvestment += pnl.investment;
+      totalSpotValue += pnl.currentValue;
+    }
   });
 
   const totalPnLAmount = totalCurrentValue - totalInvestment;
@@ -508,30 +524,34 @@ export default function PortfolioPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 総投資額 */}
+            {/* 実質投資元本 */}
             <div className={`p-5 rounded-2xl bg-[#111827] border transition-all space-y-1 ${
               activeTab === 'real' ? 'border-purple-500/30' : activeTab === 'simulation' ? 'border-cyan-500/30' : 'border-gray-800'
             }`}>
               <span className="text-xs font-semibold text-gray-400">
-                {activeTab === 'real' ? '実保有 投資元本' : activeTab === 'simulation' ? '仮想 投資総額' : '総投資元本'}
+                {activeTab === 'real' ? '実質 投資元本' : activeTab === 'simulation' ? '仮想 手出し元本' : '実質投資元本'}
               </span>
               <div className="text-2xl font-extrabold text-white font-mono">
                 ¥{Math.round(totalInvestment).toLocaleString()}
               </div>
-              <span className="text-[11px] text-gray-500 block">取得単価 × 保有株数</span>
+              <span className="text-[11px] text-gray-500 block">
+                {marginCount > 0 ? '現物買付 ＋ 信用保証金(30%)' : '現物買付代金合計'}
+              </span>
             </div>
 
-            {/* 現在評価額 */}
+            {/* 実質純資産評価額 */}
             <div className={`p-5 rounded-2xl bg-[#111827] border transition-all space-y-1 ${
               activeTab === 'real' ? 'border-purple-500/30' : activeTab === 'simulation' ? 'border-cyan-500/30' : 'border-gray-800'
             }`}>
               <span className="text-xs font-semibold text-gray-400">
-                {activeTab === 'real' ? '実保有 現在評価額' : activeTab === 'simulation' ? '仮想 現在評価額' : '現在評価額'}
+                {activeTab === 'real' ? '実保有 純資産評価額' : activeTab === 'simulation' ? '仮想 純資産評価額' : '純資産評価額'}
               </span>
               <div className="text-2xl font-extrabold text-white font-mono">
                 ¥{Math.round(totalCurrentValue).toLocaleString()}
               </div>
-              <span className="text-[11px] text-gray-500 block">リアルタイム終値評価</span>
+              <span className="text-[11px] text-gray-500 block">
+                {marginCount > 0 ? '現物時価 ＋ 信用評価損益' : '保有株のリアルタイム終値時価'}
+              </span>
             </div>
 
             {/* トータル評価損益 */}
@@ -563,6 +583,37 @@ export default function PortfolioPage() {
               <span className="text-[11px] text-gray-500 block">前営業日終値からの値動き</span>
             </div>
           </div>
+
+          {/* 💡 信用取引ポジション内訳パネル（借入金を元本に含めない明確な内訳） */}
+          {marginCount > 0 && (
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-950/30 via-gray-900 to-indigo-950/30 border border-blue-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-md">
+              <div className="flex items-center gap-2.5">
+                <span className="p-1 rounded-lg bg-blue-500/20 text-blue-300 font-bold text-[10px] px-2 border border-blue-500/40 shrink-0">
+                  ⚖️ 信用取引内訳
+                </span>
+                <p className="text-gray-300 leading-relaxed">
+                  信用建玉（{marginCount}件）は借入金を満額加算せず、<strong className="text-white">手出し保証金（約30%）と評価損益のみを純資産に反映</strong>して適正に計算しています。
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4 text-xs font-mono shrink-0 flex-wrap">
+                <div>
+                  <span className="text-[10px] text-gray-400 block">建玉総額（借入含む）</span>
+                  <span className="font-bold text-gray-200">¥{Math.round(totalMarginPosition).toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 block">必要委託保証金 (30%)</span>
+                  <span className="font-bold text-cyan-300">¥{Math.round(totalMarginDeposit).toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 block">信用評価損益</span>
+                  <span className={`font-extrabold ${totalMarginPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {totalMarginPnL >= 0 ? '+' : ''}¥{Math.round(totalMarginPnL).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 3. 銘柄一覧グリッド */}
@@ -838,7 +889,9 @@ export default function PortfolioPage() {
                   <div className="space-y-3 pt-2 border-t border-gray-800/60">
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-[11px] text-gray-500 block">取得単価 / 株数</span>
+                        <span className="text-[11px] text-gray-500 block">
+                          {pnl.isMargin ? '約定単価 / 株数' : '取得単価 / 株数'}
+                        </span>
                         <span className="font-mono font-bold text-gray-300">
                           ¥{item.entryPrice.toLocaleString()} × {item.shares}株
                         </span>
@@ -851,10 +904,35 @@ export default function PortfolioPage() {
                       </div>
                     </div>
 
+                    {/* 元本＆建玉の内訳 */}
+                    <div className="flex items-center justify-between text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-gray-900/60 border border-gray-800">
+                      {pnl.isMargin ? (
+                        <>
+                          <span className="text-gray-400">
+                            建玉代金: <strong className="text-gray-200">¥{Math.round(pnl.positionValue).toLocaleString()}</strong>
+                          </span>
+                          <span className="text-cyan-400">
+                            保証金(30%): <strong>¥{Math.round(pnl.marginDeposit).toLocaleString()}</strong>
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-400">
+                            投資元本: <strong className="text-gray-200">¥{Math.round(pnl.investment).toLocaleString()}</strong>
+                          </span>
+                          <span className="text-gray-300">
+                            現在時価: <strong className="text-white">¥{Math.round(pnl.currentValue).toLocaleString()}</strong>
+                          </span>
+                        </>
+                      )}
+                    </div>
+
                     {/* 損益表示 */}
                     <div className="p-3 rounded-xl bg-gray-950 flex items-center justify-between border border-gray-800">
                       <div>
-                        <span className="text-[10px] text-gray-500 block">評価損益</span>
+                        <span className="text-[10px] text-gray-500 block">
+                          {pnl.isMargin ? '信用評価損益' : '評価損益'}
+                        </span>
                         <span className={`text-sm font-extrabold font-mono ${
                           isItemProfit ? 'text-emerald-400' : 'text-rose-400'
                         }`}>

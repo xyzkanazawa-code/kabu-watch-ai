@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Supabase接続前やフォールバック用のサーバーメモリ共通ストア
-// これにより、複数ユーザー・複数端末からのアクセスで共有されます
-interface SharedAiNoteRecord {
-  id: string;
-  ticker: string;
-  ai_type: string;
-  title: string;
-  content: string;
-  author_name: string;
-  author_id?: string;
-  created_at: string;
-  updated_at?: string;
-}
-
-const memoryNotesStore: Map<string, SharedAiNoteRecord[]> = new Map();
+import { memoryNotesStore, SharedAiNoteRecord } from '@/lib/stockAiNotesMemoryStore';
 
 export async function GET(
   request: NextRequest,

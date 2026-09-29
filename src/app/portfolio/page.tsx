@@ -20,6 +20,12 @@ import { PtsInfo } from '@/types/stock';
 import { useAuth } from '@/lib/useAuth';
 import { AuthModal } from '@/components/AuthModal';
 import { ProfileEditModal } from '@/components/ProfileEditModal';
+import { WatchlistAiNoteModal } from '@/components/WatchlistAiNoteModal';
+import { 
+  StockAiNote, 
+  getAllLocalStockAiNotes, 
+  fetchBatchStockAiNotes 
+} from '@/lib/stockAiNotesStorage';
 import { 
   Briefcase, TrendingUp, TrendingDown, Sparkles, Bot, Plus, 
   Trash2, CheckCircle2, Clock, AlertTriangle, RefreshCw, 
@@ -63,11 +69,56 @@ export default function PortfolioPage() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // 📝 登録済みAI見解マップ & モーダル状態
+  const [aiNotesMap, setAiNotesMap] = useState<Record<string, StockAiNote[]>>({});
+  const [aiNoteModalTarget, setAiNoteModalTarget] = useState<{
+    isOpen: boolean;
+    ticker: string;
+    stockName: string;
+    notes: StockAiNote[];
+  }>({
+    isOpen: false,
+    ticker: '',
+    stockName: '',
+    notes: [],
+  });
+
+  const loadAiNotes = async (favTickers: string[]) => {
+    // 1. ローカルキャッシュから即座に表示
+    const local = getAllLocalStockAiNotes();
+    setAiNotesMap(local);
+
+    // 2. 共有サーバー（Supabase / メモリストア）から一括同期
+    if (favTickers && favTickers.length > 0) {
+      try {
+        const serverMap = await fetchBatchStockAiNotes(favTickers);
+        setAiNotesMap((prev) => ({ ...prev, ...serverMap }));
+      } catch (e) {
+        console.warn('Failed to load batch AI notes for portfolio:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     const favs = getFavorites();
     setFavorites(favs);
     loadPortfolio();
     loadWatchStocks(favs);
+    loadAiNotes(favs);
+
+    // AI見解が新規登録・更新・削除された時に即座に再読み込み
+    const handleNotesChanged = () => {
+      const currentFavs = getFavorites();
+      loadAiNotes(currentFavs);
+    };
+
+    window.addEventListener('kabu_watch_ai_notes_changed', handleNotesChanged);
+    window.addEventListener('storage', handleNotesChanged);
+
+    return () => {
+      window.removeEventListener('kabu_watch_ai_notes_changed', handleNotesChanged);
+      window.removeEventListener('storage', handleNotesChanged);
+    };
   }, []);
 
   // ポートフォリオ読み込み：即時キャッシュ表示 ＋ 非同期で今日の最新終値に自動同期
@@ -662,6 +713,8 @@ export default function PortfolioPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {watchStocks.map((stock) => {
                   const isUp = stock.changePercent >= 0;
+                  const notes = aiNotesMap[stock.ticker] || [];
+                  const hasNotes = notes.length > 0;
                   return (
                     <div
                       key={stock.ticker}
@@ -726,6 +779,33 @@ export default function PortfolioPage() {
                           </div>
                         )}
 
+                        {/* 🌟 登録済みAI見解ボタン（AIの見解が登録されたら表示） */}
+                        {hasNotes && (
+                          <button
+                            onClick={() => setAiNoteModalTarget({
+                              isOpen: true,
+                              ticker: stock.ticker,
+                              stockName: stock.name,
+                              notes: notes,
+                            })}
+                            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#0d2238] via-[#111e3b] to-[#1a1236] border border-cyan-400/60 hover:border-cyan-300 text-cyan-200 text-xs font-bold transition-all flex items-center justify-between shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/25 group cursor-pointer animate-ai-glow-pulse"
+                            title="登録されたAIの見解を読む"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+                              <span className="font-extrabold text-white text-xs truncate">
+                                {notes[0].title || 'AIの見解'}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 font-mono shrink-0">
+                                {notes.length}件
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] text-cyan-300 font-extrabold group-hover:translate-x-0.5 transition-transform shrink-0">
+                              <span>見解を見る</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-cyan-400" />
+                            </div>
+                          </button>
+                        )}
 
                         <div className="grid grid-cols-3 gap-1.5 pt-1">
                           <Link
@@ -1043,6 +1123,15 @@ export default function PortfolioPage() {
       <ProfileEditModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      {/* 🌟 ウォッチリスト用 AI見解ビューアモーダル */}
+      <WatchlistAiNoteModal
+        isOpen={aiNoteModalTarget.isOpen}
+        onClose={() => setAiNoteModalTarget((prev) => ({ ...prev, isOpen: false }))}
+        ticker={aiNoteModalTarget.ticker}
+        stockName={aiNoteModalTarget.stockName}
+        notes={aiNoteModalTarget.notes}
       />
     </div>
   );

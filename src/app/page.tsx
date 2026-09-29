@@ -22,6 +22,12 @@ import {
   KeyRound, MessageSquareText, ChevronUp, Lock, LogIn 
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
+import { WatchlistAiNoteModal } from '@/components/WatchlistAiNoteModal';
+import { 
+  StockAiNote, 
+  getAllLocalStockAiNotes, 
+  fetchBatchStockAiNotes 
+} from '@/lib/stockAiNotesStorage';
 
 // 初回即時表示用プリセットタイムライン（0秒表示でロード待ちを完全解消）
 const INITIAL_TIMELINE: TimelineItem[] = [
@@ -137,6 +143,33 @@ export default function HomePage() {
   const [hasUserApiKey, setHasUserApiKey] = useState(false);
   const [isGeminiMenuOpen, setIsGeminiMenuOpen] = useState(false);
 
+  // 📝 登録済みAI見解マップ & モーダル状態
+  const [aiNotesMap, setAiNotesMap] = useState<Record<string, StockAiNote[]>>({});
+  const [aiNoteModalTarget, setAiNoteModalTarget] = useState<{
+    isOpen: boolean;
+    ticker: string;
+    stockName: string;
+    notes: StockAiNote[];
+  }>({
+    isOpen: false,
+    ticker: '',
+    stockName: '',
+    notes: [],
+  });
+
+  const loadAiNotes = async (favTickers: string[]) => {
+    const local = getAllLocalStockAiNotes();
+    setAiNotesMap(local);
+    if (favTickers && favTickers.length > 0) {
+      try {
+        const serverMap = await fetchBatchStockAiNotes(favTickers);
+        setAiNotesMap((prev) => ({ ...prev, ...serverMap }));
+      } catch (e) {
+        console.warn('HomePage batch AI notes fetch error:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     // ログイン状態に応じたお気に入り取得（未ログインは空配列）
     const favs = getFavorites();
@@ -144,10 +177,20 @@ export default function HomePage() {
     if (isLoggedIn) {
       loadWatchlistStocks(favs);
       fetchHomeTimeline(favs);
+      loadAiNotes(favs);
     } else {
       setWatchlistStocks([]);
       fetchHomeTimeline(['7203', '6920', '9984', '6758']);
+      loadAiNotes(['7203', '6920', '9984', '6758']);
     }
+
+    // AI見解更新のイベント監視
+    const handleNotesChanged = () => {
+      const currentFavs = getFavorites();
+      loadAiNotes(currentFavs);
+    };
+    window.addEventListener('kabu_watch_ai_notes_changed', handleNotesChanged);
+    window.addEventListener('storage', handleNotesChanged);
 
     // 端末のGemini APIキー存在チェック
     const checkKey = () => {
@@ -157,6 +200,8 @@ export default function HomePage() {
     window.addEventListener('kabu_watch_api_key_changed', checkKey);
     return () => {
       window.removeEventListener('kabu_watch_api_key_changed', checkKey);
+      window.removeEventListener('kabu_watch_ai_notes_changed', handleNotesChanged);
+      window.removeEventListener('storage', handleNotesChanged);
     };
   }, [isLoggedIn]);
 
@@ -606,39 +651,83 @@ export default function HomePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {watchlistStocks.map((stock) => {
                 const isUp = (stock.changePercent ?? 0) >= 0;
+                const notes = aiNotesMap[stock.ticker] || [];
+                const hasNotes = notes.length > 0;
 
                 return (
-                  <Link
+                  <div
                     key={stock.ticker}
-                    href={`/stocks/${stock.ticker}`}
-                    className="group p-5 rounded-2xl bg-[#111827] border border-gray-800 hover:border-cyan-500/50 hover:bg-gray-800/60 transition-all shadow-lg flex flex-col justify-between space-y-4"
+                    className="group p-5 rounded-2xl bg-[#111827] border border-gray-800 hover:border-cyan-500/50 hover:bg-gray-800/60 transition-all shadow-lg flex flex-col justify-between space-y-3"
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                          {stock.ticker}
-                        </span>
-                        <h3 className="font-bold text-white text-base mt-1 group-hover:text-cyan-300 transition-colors">
-                          {stock.name}
-                        </h3>
-                        <span className="text-[10px] text-gray-400">{stock.sector || '東証上場銘柄'}</span>
-                      </div>
-
-                      <div className="text-right font-mono">
-                        <div className="text-lg font-extrabold text-white">
-                          ¥{(stock.price ?? 1000).toLocaleString()}
+                    <Link
+                      href={`/stocks/${stock.ticker}`}
+                      className="block space-y-2 cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                            {stock.ticker}
+                          </span>
+                          <h3 className="font-bold text-white text-base mt-1 group-hover:text-cyan-300 transition-colors">
+                            {stock.name}
+                          </h3>
+                          <span className="text-[10px] text-gray-400">{stock.sector || '東証上場銘柄'}</span>
                         </div>
-                        <div className={`text-xs font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {isUp ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
+
+                        <div className="text-right font-mono">
+                          <div className="text-lg font-extrabold text-white">
+                            ¥{(stock.price ?? 1000).toLocaleString()}
+                          </div>
+                          <div className={`text-xs font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {isUp ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </Link>
 
-                    <div className="pt-3 border-t border-gray-800/80 flex items-center justify-between text-xs font-semibold text-cyan-400 group-hover:translate-x-1 transition-transform">
-                      <span>専用AIダッシュボード</span>
-                      <ArrowRight className="w-4 h-4" />
+                    {/* 🌟 登録済みAI見解ボタン（AIの見解が登録されたら表示） */}
+                    {hasNotes && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setAiNoteModalTarget({
+                            isOpen: true,
+                            ticker: stock.ticker,
+                            stockName: stock.name,
+                            notes: notes,
+                          });
+                        }}
+                        className="w-full py-2 px-2.5 rounded-xl bg-gradient-to-r from-[#0d2238] via-[#111e3b] to-[#1a1236] border border-cyan-400/60 hover:border-cyan-300 text-cyan-200 text-xs font-bold transition-all flex items-center justify-between shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/25 group/btn cursor-pointer animate-ai-glow-pulse"
+                        title="登録されたAIの見解を読む"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0 animate-pulse" />
+                          <span className="font-extrabold text-white text-[11px] truncate">
+                            {notes[0].title || 'AIの見解'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 ml-1">
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 font-mono">
+                            {notes.length}件
+                          </span>
+                          <span className="text-[10px] text-cyan-300 font-bold group-hover/btn:translate-x-0.5 transition-transform">
+                            読む
+                          </span>
+                        </div>
+                      </button>
+                    )}
+
+                    <div className="pt-2.5 border-t border-gray-800/80 flex items-center justify-between text-xs font-semibold text-cyan-400">
+                      <Link
+                        href={`/stocks/${stock.ticker}`}
+                        className="flex items-center justify-between w-full hover:text-cyan-300 transition-colors"
+                      >
+                        <span>専用AIダッシュボード</span>
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </Link>
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
@@ -775,6 +864,15 @@ export default function HomePage() {
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
         onSuccess={() => setHasUserApiKey(true)}
+      />
+
+      {/* 🌟 ウォッチリスト用 AI見解ビューアモーダル */}
+      <WatchlistAiNoteModal
+        isOpen={aiNoteModalTarget.isOpen}
+        onClose={() => setAiNoteModalTarget((prev) => ({ ...prev, isOpen: false }))}
+        ticker={aiNoteModalTarget.ticker}
+        stockName={aiNoteModalTarget.stockName}
+        notes={aiNoteModalTarget.notes}
       />
 
       {/* 🤖 右下常駐：フローティングGeminiボタン（FAB） */}

@@ -39,9 +39,91 @@ export function saveLocalStockAiNotes(ticker: string, notes: StockAiNote[]): voi
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(`${STORAGE_PREFIX}${ticker}`, JSON.stringify(notes));
+    window.dispatchEvent(new CustomEvent('kabu_watch_ai_notes_changed', { detail: { ticker } }));
   } catch (e) {
     console.error('Failed to save local AI notes for ticker:', ticker, e);
   }
+}
+
+/**
+ * ローカルストレージ内の全銘柄のAI見解キャッシュを取得
+ */
+export function getAllLocalStockAiNotes(): Record<string, StockAiNote[]> {
+  if (typeof window === 'undefined') return {};
+  const result: Record<string, StockAiNote[]> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        const ticker = key.replace(STORAGE_PREFIX, '');
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const notes: StockAiNote[] = JSON.parse(raw);
+          if (Array.isArray(notes) && notes.length > 0) {
+            result[ticker] = notes.sort((a, b) => b.createdAt - a.createdAt);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to get all local AI notes:', e);
+  }
+  return result;
+}
+
+/**
+ * 複数銘柄のAI見解を一括でサーバーから同期
+ */
+export async function fetchBatchStockAiNotes(tickers: string[]): Promise<Record<string, StockAiNote[]>> {
+  if (!tickers || tickers.length === 0) return {};
+  try {
+    const res = await fetch(`/api/stocks/notes/batch?tickers=${encodeURIComponent(tickers.join(','))}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error('Batch notes fetch failed');
+    const data = await res.json();
+    const result: Record<string, StockAiNote[]> = {};
+
+    if (data.notesByTicker) {
+      Object.entries(data.notesByTicker).forEach(([ticker, list]: [string, any]) => {
+        if (Array.isArray(list)) {
+          const formatted: StockAiNote[] = list.map((item: any) => ({
+            id: String(item.id),
+            ticker: item.ticker,
+            aiType: (item.ai_type || item.aiType || 'gemini') as AiType,
+            title: item.title,
+            content: item.content,
+            authorName: item.author_name || item.authorName || '投資家メンバー',
+            authorId: item.author_id || item.authorId,
+            createdAt: item.created_at ? new Date(item.created_at).getTime() : (item.createdAt || Date.now()),
+            updatedAt: item.updated_at ? new Date(item.updated_at).getTime() : (item.updatedAt || undefined),
+          }));
+
+          // ローカルキャッシュとマージ
+          const local = getLocalStockAiNotes(ticker);
+          const idMap = new Map<string, StockAiNote>();
+          formatted.forEach((n) => idMap.set(n.id, n));
+          local.forEach((n) => {
+            if (!idMap.has(n.id)) idMap.set(n.id, n);
+          });
+          const merged = Array.from(idMap.values()).sort((a, b) => b.createdAt - a.createdAt);
+          if (merged.length > 0) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`${STORAGE_PREFIX}${ticker}`, JSON.stringify(merged));
+            }
+          }
+          result[ticker] = merged;
+        }
+      });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kabu_watch_ai_notes_changed', { detail: { tickers } }));
+      }
+      return result;
+    }
+  } catch (e) {
+    console.warn('Batch fetch notes error, falling back to local:', e);
+  }
+  return getAllLocalStockAiNotes();
 }
 
 /**

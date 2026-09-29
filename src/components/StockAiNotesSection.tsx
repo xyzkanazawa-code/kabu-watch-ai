@@ -304,12 +304,19 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
   };
 
   return (
-    <div className="rounded-2xl border border-cyan-500/35 bg-gradient-to-b from-[#0e1628] via-[#0b1120] to-[#080d19] p-4 sm:p-5 shadow-xl space-y-4">
+    <div className="rounded-2xl border border-cyan-500/40 bg-gradient-to-b from-[#0e1628] via-[#0b1120] to-[#080d19] p-4 sm:p-5 shadow-xl space-y-4 animate-border-breathing relative overflow-hidden">
       {/* セクションヘッダー */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-800/80">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-sm shrink-0">
-            <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border border-cyan-500/50 flex items-center justify-center text-cyan-300 shadow-sm shrink-0">
+              <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
+            </div>
+            {/* 薄っすら点滅するネオンピン */}
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
+            </span>
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -331,7 +338,7 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleOpenAddModal('gemini')}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 active:scale-95 transition-all cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-cyan-500/25 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
           >
             <ClipboardPaste className="w-4 h-4" />
             <span>AIの回答を貼り付ける（共有）</span>
@@ -352,21 +359,23 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
           <div className="pt-2 flex justify-center gap-2">
             <button
               onClick={() => handleOpenAddModal('gemini')}
-              className="px-3.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition-all"
+              className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/60 text-cyan-300 text-xs font-bold transition-all shadow-md animate-ai-glow-pulse flex items-center gap-1.5"
             >
-              + Geminiの見解を貼り付ける
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+              <span>+ Geminiの見解を貼り付ける</span>
             </button>
             <button
               onClick={() => handleOpenAddModal('chatgpt')}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all"
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/60 text-emerald-300 text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
             >
-              + ChatGPTの見解を貼り付ける
+              <Bot className="w-3.5 h-3.5 text-emerald-300" />
+              <span>+ ChatGPTの見解を貼り付ける</span>
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          {/* ボタン群（各AIボタン + 入力年月日バッジ + 文字数） */}
+          {/* ボタン群（各AIボタン + 薄っすら点滅パルスグロー + 入力年月日バッジ + 文字数） */}
           <div className="flex items-center gap-2 flex-wrap">
             {notes.map((note) => {
               const style = getAiStyle(note.aiType);
@@ -377,19 +386,25 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                 <button
                   key={note.id}
                   onClick={() => toggleExpand(note.id)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 border ${
+                  className={`relative inline-flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 border ${
                     isExpanded
-                      ? `bg-gradient-to-r ${style.gradient} text-white ${style.border} ring-2 ring-cyan-400/40 shadow-cyan-500/20`
-                      : `bg-gray-900/90 hover:bg-gray-800 text-gray-200 border-gray-700/80 hover:border-cyan-500/40`
+                      ? `bg-gradient-to-r ${style.gradient} text-white ${style.border} ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-500/30 animate-ai-glow-pulse`
+                      : `bg-gray-900/95 hover:bg-gray-800 text-gray-100 border-cyan-500/50 hover:border-cyan-400 animate-ai-glow-pulse`
                   }`}
                   title={`${note.title}（入力年月日: ${formatDateTimeJP(note.createdAt)}）`}
                 >
+                  {/* 薄っすら点滅するネオン光輪インジケーター */}
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400"></span>
+                  </span>
+
                   <Sparkles className={`w-3.5 h-3.5 ${isExpanded ? 'text-white' : style.iconColor}`} />
-                  <span>{note.title}</span>
+                  <span className="font-extrabold">{note.title}</span>
                   
                   {/* 📅 入力年月日バッジ */}
                   <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                    isExpanded ? 'bg-black/30 text-cyan-100' : 'bg-gray-800 text-cyan-400 border border-cyan-500/20'
+                    isExpanded ? 'bg-black/30 text-cyan-100' : 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/30'
                   }`}>
                     <Calendar className="w-2.5 h-2.5" />
                     {dateStr}
@@ -397,7 +412,7 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
 
                   {/* 文字数 */}
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    isExpanded ? 'bg-black/30 text-white/90' : 'bg-gray-800 text-gray-400'
+                    isExpanded ? 'bg-black/30 text-white/90' : 'bg-gray-800 text-gray-300'
                   }`}>
                     {note.content.length.toLocaleString()}文字
                   </span>

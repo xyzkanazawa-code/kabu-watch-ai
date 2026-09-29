@@ -50,3 +50,37 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* 🌟 AI見解ボタン用の「薄っすらと目立つ色で呼吸点滅する」パルスグロー演出 */
+@keyframes aiGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.25), 0 0 20px rgba(99, 102, 241, 0.15);
+    border-color: rgba(6, 182, 212, 0.45);
+    opacity: 0.92;
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(6, 182, 212, 0.65), 0 0 35px rgba(99, 102, 241, 0.4);
+    border-color: rgba(56, 189, 248, 0.95);
+    opacity: 1;
+  }
+}
+
+.animate-ai-glow-pulse {
+  animation: aiGlowPulse 2.4s ease-in-out infinite;
+}
+
+/* 🌟 セクション全体の薄っすらとした外枠点滅 */
+@keyframes borderBreathing {
+  0%, 100% {
+    border-color: rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.08);
+  }
+  50% {
+    border-color: rgba(6, 182, 212, 0.65);
+    box-shadow: 0 0 25px rgba(6, 182, 212, 0.22);
+  }
+}
+
+.animate-border-breathing {
+  animation: borderBreathing 3s ease-in-out infinite;
+}

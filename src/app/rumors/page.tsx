@@ -82,8 +82,8 @@ export default function RumorsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedVerdict, setSelectedVerdict] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'buzz' | 'fakeRisk' | 'credibility'>('buzz');
-  // 折りたたみ状態をIDごとのマップで管理（初期は先頭の1件のみ展開）
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({ 'rumor-1': true });
+  // 折りたたみ状態をIDごとのマップで管理（初期状態はすべて折りたたまれた全閉じ状態）
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -162,7 +162,21 @@ export default function RumorsPage() {
   };
 
   React.useEffect(() => {
+    // ページ表示時および他ページから戻ってきた時に自動で全カードを折りたたむ
+    setExpandedIds({});
     fetchLiveRumors();
+
+    const handleAutoCollapse = () => {
+      setExpandedIds({});
+    };
+
+    window.addEventListener('pageshow', handleAutoCollapse);
+    window.addEventListener('popstate', handleAutoCollapse);
+
+    return () => {
+      window.removeEventListener('pageshow', handleAutoCollapse);
+      window.removeEventListener('popstate', handleAutoCollapse);
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -528,8 +542,18 @@ export default function RumorsPage() {
                       {getCategoryLabel(customAnalysisResult.category).label}
                     </span>
                   </div>
-                  <div className={`px-3 py-1 rounded-full border text-xs font-bold ${getRumorVerdictBadge(customAnalysisResult.verdict).bg}`}>
-                    {getRumorVerdictBadge(customAnalysisResult.verdict).label}
+                  <div className="flex items-center gap-2">
+                    <div className={`px-3 py-1 rounded-full border text-xs font-bold ${getRumorVerdictBadge(customAnalysisResult.verdict).bg}`}>
+                      {getRumorVerdictBadge(customAnalysisResult.verdict).label}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCustomAnalysisResult(null)}
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs transition-colors"
+                      title="分析結果を閉じる"
+                    >
+                      閉じる
+                    </button>
                   </div>
                 </div>
 
@@ -745,7 +769,10 @@ export default function RumorsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <Link 
                           href={`/stocks/${item.ticker}`}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedIds({});
+                          }}
                           className="text-base sm:text-lg font-bold text-white hover:text-cyan-300 transition-colors flex items-center gap-1.5"
                           title="銘柄詳細ページを開く"
                         >
@@ -943,6 +970,7 @@ export default function RumorsPage() {
 
                           <Link
                             href={`/stocks/${item.ticker}`}
+                            onClick={() => setExpandedIds({})}
                             className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5"
                           >
                             開示・チャート <ArrowRight className="w-3.5 h-3.5" />

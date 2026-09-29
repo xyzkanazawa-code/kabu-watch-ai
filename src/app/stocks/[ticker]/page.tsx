@@ -17,6 +17,7 @@ import { Loader2, ArrowLeft, Bot, Sparkles, ExternalLink, Check, Copy, Settings,
 import { ExternalAiSettingsModal } from '@/components/ExternalAiSettingsModal';
 import { useExternalAiSettings, ExternalAiItem } from '@/lib/useExternalAiSettings';
 import { useAuth } from '@/lib/useAuth';
+import { StockAiNotesSection } from '@/components/StockAiNotesSection';
 
 export default function StockCenterPage() {
   const params = useParams();
@@ -280,12 +281,15 @@ export default function StockCenterPage() {
                       <div className="w-full flex items-center justify-start sm:justify-end">
                         <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/90 px-2.5 py-1 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          質問文をコピーしました！{copiedPrompt}で貼り付けて送信してください
+                          質問文をコピーしました！{copiedPrompt}で送信し、得られた回答はすぐ下の「AIの回答を貼り付ける」で保存できます
                         </span>
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* 📝 外部AI見解・調査メモ（Gemini等の調査結果を貼り付けてボタン展開できるエリア） */}
+                <StockAiNotesSection ticker={ticker} stockName={stockInfo.name} />
 
                 {/* Multi-perspective Tabs Area */}
                 <StockTabs

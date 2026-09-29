@@ -36,6 +36,7 @@ import {
   formatShortDate
 } from '@/lib/stockAiNotesStorage';
 import { useAuth } from '@/lib/useAuth';
+import { SmartAiContent } from '@/components/SmartAiContent';
 
 interface Props {
   ticker: string;
@@ -92,97 +93,6 @@ const AI_OPTIONS: { id: AiType; name: string; gradient: string; border: string; 
     iconColor: 'text-purple-400',
   },
 ];
-
-// 長文AI回答を見やすくレンダリングするフォーマッタ
-const FormattedAiContent: React.FC<{ content: string }> = ({ content }) => {
-  const lines = content.split('\n');
-
-  const renderFormattedLine = (line: string) => {
-    const parts = line.split(/(\*\*.*?\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <strong key={i} className="text-white font-black bg-cyan-950/40 px-1 py-0.5 rounded">
-            {part.slice(2, -2)}
-          </strong>
-        );
-      }
-      return part;
-    });
-  };
-
-  return (
-    <div className="space-y-2 font-sans select-text">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-
-        if (!trimmed) {
-          return <div key={idx} className="h-2" />;
-        }
-
-        // 大見出し # 
-        if (trimmed.startsWith('# ')) {
-          return (
-            <h3 key={idx} className="text-base sm:text-lg font-black text-cyan-300 pt-3 pb-1 border-b border-cyan-500/30 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-              {renderFormattedLine(trimmed.replace(/^#\s+/, ''))}
-            </h3>
-          );
-        }
-
-        // 中見出し ## 
-        if (trimmed.startsWith('## ')) {
-          return (
-            <h4 key={idx} className="text-sm sm:text-base font-bold text-white pt-2.5 pb-0.5 text-cyan-100 flex items-center gap-1.5">
-              <span className="w-1.5 h-3.5 bg-cyan-400 rounded-full shrink-0" />
-              {renderFormattedLine(trimmed.replace(/^##\s+/, ''))}
-            </h4>
-          );
-        }
-
-        // 小見出し ### 
-        if (trimmed.startsWith('### ')) {
-          return (
-            <h5 key={idx} className="text-xs sm:text-sm font-bold text-amber-300 pt-2 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
-              {renderFormattedLine(trimmed.replace(/^###\s+/, ''))}
-            </h5>
-          );
-        }
-
-        // 箇条書き - または *
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-          const bulletContent = trimmed.replace(/^[-*•]\s+/, '');
-          return (
-            <div key={idx} className="flex items-start gap-2 pl-2 text-xs sm:text-sm text-gray-200 leading-relaxed">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
-              <span className="flex-1">{renderFormattedLine(bulletContent)}</span>
-            </div>
-          );
-        }
-
-        // 数字付き箇条書き 1. 2. etc.
-        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-        if (numMatch) {
-          return (
-            <div key={idx} className="flex items-start gap-2 pl-2 text-xs sm:text-sm text-gray-200 leading-relaxed">
-              <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold shrink-0 mt-0.5">
-                {numMatch[1]}
-              </span>
-              <span className="flex-1">{renderFormattedLine(numMatch[2])}</span>
-            </div>
-          );
-        }
-
-        return (
-          <p key={idx} className="text-xs sm:text-sm text-gray-200 leading-relaxed">
-            {renderFormattedLine(line)}
-          </p>
-        );
-      })}
-    </div>
-  );
-};
 
 export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
   const { user } = useAuth();
@@ -504,7 +414,7 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
 
                 {/* 見解本文（長文でも読みやすいスクロール＆タイポグラフィ） */}
                 <div className="max-h-[550px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700">
-                  <FormattedAiContent content={currentNote.content} />
+                  <SmartAiContent content={currentNote.content} aiType={currentNote.aiType} />
                 </div>
 
                 <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400">

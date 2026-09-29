@@ -16,6 +16,7 @@ import {
   User
 } from 'lucide-react';
 import { StockAiNote, AiType, formatDateTimeJP } from '@/lib/stockAiNotesStorage';
+import { SmartAiContent } from '@/components/SmartAiContent';
 
 interface Props {
   isOpen: boolean;
@@ -219,29 +220,8 @@ export const WatchlistAiNoteModal: React.FC<Props> = ({
               </div>
 
               {/* 見解の長文テキスト */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-[#0a0f1d] border border-gray-800/80 text-gray-200 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap select-text space-y-2">
-                {currentNote.content.split('\n').map((line, idx) => {
-                  const trimmed = line.trim();
-                  if (!trimmed) return <div key={idx} className="h-2" />;
-                  if (trimmed.startsWith('#')) {
-                    const clean = trimmed.replace(/^#+\s*/, '');
-                    return (
-                      <div key={idx} className="font-extrabold text-cyan-300 text-sm sm:text-base border-b border-gray-800 pb-1 pt-2">
-                        {clean}
-                      </div>
-                    );
-                  }
-                  if (trimmed.startsWith('- ') || trimmed.startsWith('・') || trimmed.startsWith('* ')) {
-                    const clean = trimmed.replace(/^[-・*]\s*/, '');
-                    return (
-                      <div key={idx} className="flex items-start gap-2 pl-2">
-                        <span className="text-cyan-400 mt-1 text-xs">◆</span>
-                        <div className="flex-1">{renderFormattedLine(clean)}</div>
-                      </div>
-                    );
-                  }
-                  return <div key={idx}>{renderFormattedLine(line)}</div>;
-                })}
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0a0f1d] border border-gray-800/80 text-gray-200 select-text">
+                <SmartAiContent content={currentNote.content} aiType={currentNote.aiType} />
               </div>
             </div>
           ) : (

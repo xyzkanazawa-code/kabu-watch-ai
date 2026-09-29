@@ -12,10 +12,12 @@ import { SemanticSearchResult } from '@/types/stock';
 import { STOCK_MASTER } from '@/lib/dataFetcher';
 import { normalizeStockInput, findBrandSuggestions, extractTickerCode } from '@/lib/stockLookup';
 import { saveFavoriteMeta, addFavorite, removeFavorite, getFavorites } from '@/lib/storage';
+import { getStoredApiKey } from '@/lib/apiKeyStorage';
 
 interface SemanticSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialQuery?: string;
 }
 
 // 言葉で探せるAIスクリーニングの人気プリセット
@@ -40,9 +42,9 @@ const BRAND_PRESETS = [
   '6920 レーザーテック'
 ];
 
-export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({ isOpen, onClose }) => {
+export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({ isOpen, onClose, initialQuery }) => {
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery || '');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SemanticSearchResult[]>([]);
   const [searched, setSearched] = useState(false);
@@ -52,8 +54,12 @@ export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({ isOpen
   useEffect(() => {
     if (isOpen) {
       setFavTickers(getFavorites());
+      if (initialQuery) {
+        setQuery(initialQuery);
+        handleSearch(initialQuery);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialQuery]);
 
   const handleToggleWatch = (e: React.MouseEvent, ticker: string, name: string, sector?: string) => {
     e.preventDefault();
@@ -123,12 +129,19 @@ export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({ isOpen
     const q = normalizeStockInput(raw);
     if (!q) return;
 
+    if (targetQuery !== undefined) {
+      setQuery(targetQuery);
+    }
+
     setLoading(true);
     setSearched(true);
 
+    // スクリーニング系キーワードが含まれる場合はコード直接一致の先行表示を行わない
+    const isScreening = ['500円', '低位', '出来高', '防衛', '高配当', '半導体', 'ai', '宇宙', '割安'].some(k => q.includes(k));
+
     // 証券コード直接一致の場合の先行表示
     const code = extractTickerCode(q);
-    if (code && !targetQuery) {
+    if (code && !targetQuery && !isScreening && q.length <= 6) {
       const master = STOCK_MASTER[code];
       const name = master ? master.name : (liveTickerName?.name || `証券コード ${code}`);
       const sector = master ? master.sector : (liveTickerName?.sector || '東証上場');
@@ -145,10 +158,14 @@ export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({ isOpen
     }
 
     try {
+      const apiKey = getStoredApiKey();
       const res = await fetch('/api/gemini/semantic-search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q })
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'x-gemini-api-key': apiKey } : {})
+        },
+        body: JSON.stringify({ query: q, apiKey })
       });
       const data = await res.json();
       if (data.results && data.results.length > 0) {

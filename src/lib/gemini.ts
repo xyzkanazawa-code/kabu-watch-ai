@@ -14,11 +14,26 @@ export function getGenAIClient(customKey?: string): GoogleGenerativeAI | null {
   return effective ? new GoogleGenerativeAI(effective) : null;
 }
 
+// スクリーニング意図を持つキーワード（これらが含まれる場合は社名・コードのあいまい一致をスキップ）
+const SCREENING_INTENT_KEYWORDS = [
+  '株価', '以下', '以上', '未満', '円', '低位', 'ボロ株', 'ワンコイン',
+  '出来高', '商い', '急増', '異常', '売買高', '急騰', '急落',
+  '配当', '利回り', '高配当', 'バリュー', '割安', 'pbr', 'per',
+  '防衛', '国策', 'テーマ', '半導体', 'ai', '宇宙', '自動運転',
+  'スクリーニング', 'おすすめ', 'ランキング', '銘柄', '関連', '注目'
+];
+
 // 証券コード、店舗名・ブランド名、社名の直接一致＆「この会社ですか？」候補抽出
 async function matchDirectStockOrCode(rawQuery: string): Promise<SemanticSearchResult[]> {
   const q = normalizeStockInput(rawQuery);
   const matchedList: SemanticSearchResult[] = [];
   const seenTickers = new Set<string>();
+
+  // ユーザーがスクリーニング条件を入力している場合は、部分一致による誤爆（例: 「防衛」「株価500円」で関係ない会社がヒット）を防ぐためスキップ
+  const isScreeningIntent = SCREENING_INTENT_KEYWORDS.some(kw => q.includes(kw));
+  if (isScreeningIntent && q.length > 3) {
+    return [];
+  }
 
   // 1. 証券コード判定 (例: 7203, ７２０３, 186A, 186a 等の英数字コード)
   const tickerCode = extractTickerCode(rawQuery);
@@ -51,11 +66,12 @@ async function matchDirectStockOrCode(rawQuery: string): Promise<SemanticSearchR
     }
   }
 
-  // 3. 会社名での直接一致チェック
+  // 3. 会社名での直接一致チェック（社名そのもの、または社名を含む短い検索語の場合）
   for (const [ticker, stock] of Object.entries(STOCK_MASTER)) {
     if (seenTickers.has(ticker)) continue;
     const normStockName = normalizeStockInput(stock.name);
-    if (normStockName.includes(q) || q.includes(normStockName)) {
+    // 完全一致または前方一致、または社名が4文字以上で検索文字列と合致する場合のみ
+    if (normStockName === q || (normStockName.length >= 3 && q.includes(normStockName) && q.length <= normStockName.length + 4)) {
       seenTickers.add(ticker);
       matchedList.push({
         ticker: stock.ticker,
@@ -71,11 +87,15 @@ async function matchDirectStockOrCode(rawQuery: string): Promise<SemanticSearchR
   return matchedList;
 }
 
-export async function searchStocksBySemanticQuery(rawQuery: string): Promise<SemanticSearchResult[]> {
+export async function searchStocksBySemanticQuery(
+  rawQuery: string,
+  customApiKey?: string
+): Promise<SemanticSearchResult[]> {
   const query = normalizeStockInput(rawQuery);
   const directMatches = await matchDirectStockOrCode(rawQuery);
 
-  if (!genAI) {
+  const client = getGenAIClient(customApiKey);
+  if (!client) {
     const fallbackResults = getFallbackSemanticSearch(query);
     const combined = [...directMatches];
     for (const item of fallbackResults) {
@@ -87,36 +107,58 @@ export async function searchStocksBySemanticQuery(rawQuery: string): Promise<Sem
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `
 あなたは日本の株式市場に精通したシニア株式アナリスト兼スクリーニングAIです。
-ユーザーから入力された検索キーワードや「言葉によるスクリーニング条件」から、合致する代表的な日本の上場企業（東証プライム・スタンダード・グロース）を3〜6社厳選して出力してください。
+ユーザーから入力された検索キーワードや「言葉によるスクリーニング条件」から、合致する代表的な日本の上場企業（東証プライム・スタンダード・グロース）を【厳選して6〜8社】出力してください。（※3社などの少なすぎる件数は禁止です。必ず6社以上出力してください。）
 
 検索クエリ: "${rawQuery}" (正規化: "${query}")
 
-【検索・スクリーニング判定ロジック】
-1. 💡 言葉による条件スクリーニング（例: 「低位株」「今注目の低位株」「ここ最近出来高が異常にできてる株」「急騰株」「高配当株」「割安成長株」「AI半導体」など）の場合:
-   - ユーザーの投資意図（株価帯、出来高急増、好材料、思惑、テーマなど）を深く理解してください。
-   - 例: 「低位株」「注目の低位株」なら株価数百円以下（または1,000円未満）で値動きが活発、事業再生やテーマ性がある東証上場銘柄（例: 名村造船所、日本板硝子、三菱自動車、ジャパンディスプレイ、さくらインターネット、AIメカテック等）をピックアップ。
-   - 例: 「出来高が異常にできてる株」「商い急増」なら大口資金流入や思惑で売買高が跳ね上がっている銘柄をピックアップ。
-   - "relevanceReason" には「現在の株価水準」「なぜこの条件に合致するのか」「出来高急増の理由や材料・今後のカタリスト」を投資家向けに具体的に分かりやすく明記してください。
-   - "representativeProducts" には特徴タグ（例: ["株価300円台", "出来高急増", "思惑買い"]）を格納してください。
+【厳格なスクリーニング選定ルール】
+1. 💡 株価条件が指定されている場合（例: 「500円以下」「1000円以下」「ワンコイン」など）:
+   - 【絶対遵守】現在の株価が指定金額以下の銘柄のみを選定してください。
+   - かつて低位株だったが現在は数千円に急騰した銘柄（例: 名村造船所、さくらインターネットなど）は絶対に含めないでください。
+   - 「500円以下」なら以下のような真の低位銘柄群から選定してください:
+     - 9432 NTT (約150円、高配当・超大型ディフェンシブ)
+     - 9434 ソフトバンク (約190円〜200円、高配当)
+     - 7211 三菱自動車 (約400円〜450円、低PBR)
+     - 4005 住友化学 (約350円〜400円、構造改革)
+     - 7201 日産自動車 (約400円〜450円、高利回り)
+     - 5202 日本板硝子 (約450円前後、低PBRバリュー)
+     - 4689 LINEヤフー (約380円〜400円)
+     - 6740 ジャパンディスプレイ (約20円台、超低位思惑)
 
-2. 🏪 店舗名・ブランド名・サービス名（例: ユニクロ、ドンキ、スシロー、無印、サイゼ、マック等）の場合:
-   - 運営親会社の上場企業（例: ファーストリテイリング 9983、パン・パシフィックHD 7532等）を最優先で出力してください。
+2. 🛡️ 「防衛」「国策」が指定されている場合:
+   - 【絶対遵守】防衛装備品（戦闘機・護衛艦・潜水艦・ミサイル・火砲・レーダー・防衛エレクトロニクス）の供給企業のみを選定してください。
+   - 任天堂やソニー、自動車などの防衛と無関係な企業は絶対に含めないでください。
+   - 代表例:
+     - 7011 三菱重工業 (防衛装備品最大手、ミサイル・戦闘機・護衛艦)
+     - 7012 川崎重工業 (潜水艦、固定翼哨戒機P-1、C-2輸送機)
+     - 7013 IHI (航空宇宙・防衛、戦闘機エンジン)
+     - 7721 東京計器 (防衛・レーダー・慣性誘導装置)
+     - 6203 豊和工業 (自衛隊小銃・迫撃砲・装甲車用火砲)
+     - 6208 石川製作所 (艦艇用機雷・防衛機器)
+     - 6946 日本アビオニクス (防衛用情報表示装置・指揮通信システム)
+     - 4274 細谷火工 (防衛用照明弾・発煙筒・火薬類)
 
-3. 🔢 証券コード（例: 7203）や会社名の場合:
-   - 該当する銘柄を最優先の1件目に確信度100で出力してください。
+3. ⚡ 「出来高急増」「異常な商い」が指定されている場合:
+   - 東証で連日売買代金・出来高がトップクラス、または大口資金の思惑が集中している銘柄（7011 三菱重工業、6920 レーザーテック、3778 さくらインターネット、6857 アドバンテスト、6146 ディスコ、7014 名村造船所、3498 霞ヶ関キャピタル など）。
+
+4. 💎 「高配当」「好業績」「バリュー株」が指定されている場合:
+   - 配当利回りが高く業績安定、PBR1倍割れの優良企業（8306 三菱UFJ、8316 三井住友FG、8058 三菱商事、8001 伊藤忠商事、2914 JT、1605 INPEX、4502 武田薬品、9432 NTT など）。
+
+5. 🤖 「次世代AI」「半導体」が指定されている場合:
+   - 先端半導体製造装置・AIインフラの主力企業（6857 アドバンテスト、6146 ディスコ、8035 東京エレクトロン、6920 レーザーテック、3778 さくらインターネット、6526 ソシオネクスト、6723 ルネサス、4063 信越化学 など）。
 
 必ず以下のJSON配列形式のみで出力してください。Markdownのコードブロックや余計な解説は含めないでください。
 [
   {
-    "ticker": "7014",
-    "name": "名村造船所",
-    "sector": "輸送用機器",
-    "relevanceReason": "造船サイクルの好転と円安恩恵により大口資金が集中。出来高が急増している代表的注目株。",
-    "representativeProducts": ["大型タンカー", "出来高急増", "低PBR"],
-    "confidenceScore": 95
+    "ticker": "9432",
+    "name": "NTT",
+    "sector": "情報・通信業",
+    "relevanceReason": "株価約150円の代表的ワンコイン低位株。株式25分割で個人が買いやすく、配当利回り3%超の鉄壁インフラ。",
+    "representativeProducts": ["株価150円台", "高配当", "連続増配"],
+    "confidenceScore": 98
   }
 ]
 `;
@@ -983,7 +1025,7 @@ function getSectorContext(sector: string, name: string) {
   };
 }
 
-// フォールバック関数
+// フォールバック関数（Gemini APIキー未設定時や通信障害時でも高精度なスクリーニングを提供）
 function getFallbackSemanticSearch(query: string): SemanticSearchResult[] {
   const brandList = findBrandSuggestions(query);
   if (brandList.length > 0) {
@@ -999,197 +1041,513 @@ function getFallbackSemanticSearch(query: string): SemanticSearchResult[] {
 
   const q = query.toLowerCase();
 
-  // 1. 低位株・今注目の低位株スクリーニング
-  if (q.includes('低位') || q.includes('ボロ株') || q.includes('1000円以下') || q.includes('500円') || q.includes('ワンコイン')) {
+  // 1. 💡 株価500円以下・ワンコイン低位株スクリーニング（※現在株価が確実に500円以下の銘柄のみを厳選）
+  if (q.includes('500円') || q.includes('ワンコイン') || (q.includes('500') && q.includes('以下'))) {
     return [
       {
-        ticker: '7014',
-        name: '名村造船所',
-        sector: '輸送用機器',
-        relevanceReason: '【今注目の急騰低位株】株価数百円台から大化けした代表格。造船市況の高騰と大型船の受注残急増により、出来高・売買代金ともに東証トップクラスの過熱ぶりを維持。',
-        representativeProducts: ['大型商船・タンカー', 'PBR0.9倍', '出来高急増'],
+        ticker: '9432',
+        name: 'NTT (日本電信電話)',
+        sector: '情報・通信業',
+        relevanceReason: '【株価約150円の王道低位株】株式25分割により1株150円台で手軽に投資可能。10期以上の連続増配と配当利回り3%超を誇る東証プライムを代表する安心の低位株。',
+        representativeProducts: ['株価150円台', '配当利回り3.4%', '株式25分割'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '9434',
+        name: 'ソフトバンク',
+        sector: '情報・通信業',
+        relevanceReason: '【株価約190円の超高配当低位株】10分割を実施し1株190円台で購入可能に。配当利回り4%超の高水準を誇り、PayPayやLINE連携で個人投資家から圧倒的人気。',
+        representativeProducts: ['株価190円台', '高配当4.5%', '通信メガキャリア'],
         confidenceScore: 98
-      },
-      {
-        ticker: '5202',
-        name: '日本板硝子',
-        sector: 'ガラス・土石製品',
-        relevanceReason: '【注目の低位バリュー株】株価400〜500円台。建築・自動車用ガラスの世界大手。PBR0.4倍台の超割安放置から、事業再生と資本効率改善期待で出来高が急激に増加中。',
-        representativeProducts: ['建築用ガラス', 'ソーラー用ガラス', 'PBR0.4倍'],
-        confidenceScore: 94
-      },
-      {
-        ticker: '6740',
-        name: 'ジャパンディスプレイ (JDI)',
-        sector: '電気機器',
-        relevanceReason: '【超低位・思惑株】株価20〜30円台の超低位株。次世代OLED「eLEAP」の量産化や車載ディスプレイ提携の材料が出るたびに異常な出来高を伴って急動意。',
-        representativeProducts: ['eLEAPディスプレイ', '車載液晶', '超低位株'],
-        confidenceScore: 90
       },
       {
         ticker: '7211',
         name: '三菱自動車',
         sector: '輸送用機器',
-        relevanceReason: '【400円台の割安低位株】東南アジア市場でのハイブリッド車投入や日産・ホンダとの協業検討を機に機関投資家の買い戻しが活発化。配当利回り4%超。',
-        representativeProducts: ['アウトランダーPHEV', 'デリカD:5', '高配当低位株'],
+        relevanceReason: '【株価400円台の割安低位株】PBR0.6倍台の割安水準。東南アジアでのハイブリッド車投入や日産・ホンダアライアンスでのシナジー期待で出来高が活発化。',
+        representativeProducts: ['株価400円台', 'PBR0.6倍', '低位自動車株'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '4005',
+        name: '住友化学',
+        sector: '化学',
+        relevanceReason: '【株価350〜400円台の事業再生株】国内総合化学大手。医薬・石油化学の構造改革と資産売却による業績急回復シナリオに大口の思惑資金が流入中。',
+        representativeProducts: ['株価300円台後半', '構造改革', '総合化学大手'],
+        confidenceScore: 93
+      },
+      {
+        ticker: '7201',
+        name: '日産自動車',
+        sector: '輸送用機器',
+        relevanceReason: '【株価400円台・高利回りバリュー株】PBR0.3倍台の歴史的超割安水準。ホンダとのEV包括協業や株主還元強化を機に見直し買いが交錯。',
+        representativeProducts: ['株価400円台', 'PBR0.3倍台', '高配当バリュー'],
+        confidenceScore: 92
+      },
+      {
+        ticker: '5202',
+        name: '日本板硝子',
+        sector: 'ガラス・土石製品',
+        relevanceReason: '【株価400〜500円台の低位バリュー株】建築・自動車用ガラスの世界大手。超低PBR（0.4倍台）からの資産効率改善と事業再生期待で商いが急増。',
+        representativeProducts: ['株価400円台', 'PBR0.4倍', '建築用ガラス'],
+        confidenceScore: 90
+      },
+      {
+        ticker: '4689',
+        name: 'LINEヤフー',
+        sector: '情報・通信業',
+        relevanceReason: '【株価380〜400円台の大型ネット低位株】検索・コマース・メッセンジャーを統合した国内巨大プラットフォーム。資本関係見直しと自社株買いが材料視。',
+        representativeProducts: ['株価300円台後半', 'LINE/Yahoo!', '国内最大プラットフォーム'],
         confidenceScore: 89
+      },
+      {
+        ticker: '6740',
+        name: 'ジャパンディスプレイ (JDI)',
+        sector: '電気機器',
+        relevanceReason: '【株価20円台の超低位仕手系株】東証プライムからスタンダードへ。次世代有機EL「eLEAP」のライセンス供与材料などで時折数十倍の出来高急増を伴い急騰。',
+        representativeProducts: ['株価20円台', '超低位株', 'eLEAP技術'],
+        confidenceScore: 86
       }
     ];
   }
 
-  // 2. 出来高急増・異常な商いスクリーニング
-  if (q.includes('出来高') || q.includes('商い') || q.includes('売買高') || q.includes('異常') || q.includes('急増')) {
+  // 2. 🛡️ 防衛・国策テーマ株スクリーニング（※防衛装備品・宇宙・自衛隊需品の供給企業のみを厳選）
+  if (q.includes('防衛') || q.includes('国策') || q.includes('自衛隊') || q.includes('軍事') || q.includes('装備')) {
     return [
       {
         ticker: '7011',
         name: '三菱重工業',
         sector: '機械',
-        relevanceReason: '【出来高・売買代金連日首位】防衛予算拡大および次世代原発・航空宇宙の国策テーマが集中。個人のみならず海外機関投資家の巨額資金が流入し、連日猛烈な大商いが継続。',
-        representativeProducts: ['防衛装備品', '次世代革新炉', '売買代金東証トップ'],
-        confidenceScore: 99
+        relevanceReason: '【防衛国策の絶対王者】防衛予算倍増の筆頭恩恵株。次期戦闘機（日英伊共同開発）、護衛艦、スタンド・オフ・ミサイルなど防衛装備品の国内シェアトップ。連日東証売買代金首位級。',
+        representativeProducts: ['次期戦闘機', '12式地対艦誘導弾', 'イージス護衛艦'],
+        confidenceScore: 100
       },
       {
-        ticker: '3778',
-        name: 'さくらインターネット',
-        sector: '情報・通信業',
-        relevanceReason: '【大口資金集中・出来高急増株】政府クラウド先行採択と米NVIDIA製最新GPU調達の報道を機に売買高が爆発。個人投資家の資金回転が猛烈に加速中。',
-        representativeProducts: ['生成AIクラウド', '政府クラウド認証', '出来高急増'],
-        confidenceScore: 96
-      },
-      {
-        ticker: '3498',
-        name: '霞ヶ関キャピタル',
-        sector: '不動産業',
-        relevanceReason: '【市場屈指の大商いグロース株】冷凍冷蔵倉庫やアパートメントホテルの開発ファンドが好調。機関投資家の参入と売り方の買い戻しが交錯し、連日異常な売買代金を記録。',
-        representativeProducts: ['冷凍自動倉庫', 'Fav Hotel', '売買高急拡大'],
-        confidenceScore: 92
-      },
-      {
-        ticker: '6920',
-        name: 'レーザーテック',
-        sector: '電気機器',
-        relevanceReason: '【個人・機関投資家の商い集中】日経平均構成銘柄の中で売買代金トップ常連。半導体市況のニュースに応じて数千万株単位の商いが成立する超流動性銘柄。',
-        representativeProducts: ['EUVマスク検査装置', '日経平均連動', '超巨大売買高'],
-        confidenceScore: 90
-      }
-    ];
-  }
-
-  // 3. 高配当・割安バリュー株
-  if (q.includes('配当') || q.includes('利回り') || q.includes('バリュー') || q.includes('割安')) {
-    return [
-      {
-        ticker: '8306',
-        name: '三菱UFJフィナンシャル・グループ',
-        sector: '銀行業',
-        relevanceReason: '【高配当×金利上昇メリット】日銀の利上げ局面で利ざや改善期待が続く国内メガバンク首位。配当性向40%目標、自社株買い積極化で株主還元が極めて手厚い。',
-        representativeProducts: ['メガバンク', '配当利回り約3.5%', '自社株買い'],
-        confidenceScore: 96
-      },
-      {
-        ticker: '8058',
-        name: '三菱商事',
-        sector: '卸売業',
-        relevanceReason: '【累進配当の総合商社王者】減配せず増配または維持を掲げる累進配当を宣言。資源高と非資源分野の強固なキャッシュ創出力、大規模自己株取得が強み。',
-        representativeProducts: ['総合商社', '累進配当', 'バフェット投資銘柄'],
-        confidenceScore: 95
-      },
-      {
-        ticker: '9432',
-        name: '日本電信電話 (NTT)',
-        sector: '情報・通信業',
-        relevanceReason: '【150円台の超安定・高配当低位株】株式25分割により株価150円台で購入可能。10期以上の連続増配と鉄壁のディフェンシブ収益力を誇る初心者にも人気の低位高配当株。',
-        representativeProducts: ['株価150円台', '連続増配', '国内通信インフラ'],
-        confidenceScore: 93
-      }
-    ];
-  }
-
-  if (q.includes('プリウス') || q.includes('自動車') || q.includes('車')) {
-    return [
-      {
-        ticker: '7203',
-        name: 'トヨタ自動車',
+        ticker: '7012',
+        name: '川崎重工業',
         sector: '輸送用機器',
-        relevanceReason: '世界最大手の自動車メーカーであり、ハイブリッド車「プリウス」の開発・製造元。',
-        representativeProducts: ['プリウス', 'クラウン', 'RAV4', 'ヤリス'],
+        relevanceReason: '【防衛装備品の重鎮】国産哨戒機「P-1」、輸送機「C-2」、潜水艦の建造を手掛ける防衛中核企業。防衛航空・潜水艦分野で三菱重工と双璧をなす。',
+        representativeProducts: ['潜水艦建造', '固定翼哨戒機P-1', 'C-2輸送機'],
         confidenceScore: 98
       },
       {
-        ticker: '7267',
-        name: 'ホンダ (本田技研工業)',
-        sector: '輸送用機器',
-        relevanceReason: '二輪車世界首位、四輪車でもグローバル展開する大手自動車メーカー。',
-        representativeProducts: ['N-BOX', 'ヴェゼル', 'シビック'],
-        confidenceScore: 85
+        ticker: '7013',
+        name: 'IHI',
+        sector: '機械',
+        relevanceReason: '【防衛航空エンジン＆宇宙】次期戦闘機用エンジンの共同開発やイージス艦ガスタービンエンジン、固体燃料ロケット技術を担う防衛・航空宇宙の最重要企業。',
+        representativeProducts: ['戦闘機用ジェットエンジン', 'ロケットモーター', '航空宇宙'],
+        confidenceScore: 97
+      },
+      {
+        ticker: '7721',
+        name: '東京計器',
+        sector: '精密機器',
+        relevanceReason: '【防衛レーダー・慣性誘導の中核】戦闘機・ヘリ・ミサイル向けの慣性航法装置やレーダー警戒装置で防衛省向け高シェアを誇る老舗防衛専業級銘柄。',
+        representativeProducts: ['レーダー警戒装置', '慣性航法システム', '防衛通信機器'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '6203',
+        name: '豊和工業',
+        sector: '機械',
+        relevanceReason: '【陸上自衛隊の小銃・火砲本命】自衛隊の20式小銃をはじめ、迫撃砲、装甲車両用火器を手掛ける日本の防衛小火器トップメーカー。有事思惑の急騰株常連。',
+        representativeProducts: ['20式小銃', '迫撃砲', '防衛火器'],
+        confidenceScore: 94
+      },
+      {
+        ticker: '6208',
+        name: '石川製作所',
+        sector: '機械',
+        relevanceReason: '【機雷・防衛電子機器】海上自衛隊向け機雷の専業メーカー。地政学リスク高まり時に短期資金が集中しやすい伝統的防衛テーマ株。',
+        representativeProducts: ['機雷', '防衛電子機器', 'センサー'],
+        confidenceScore: 92
+      },
+      {
+        ticker: '6946',
+        name: '日本アビオニクス',
+        sector: '電気機器',
+        relevanceReason: '【防衛エレクトロニクス】指揮統制システム、防衛用情報表示装置、赤外線サーモグラフィで防衛省向け実績多数。高付加価値な防衛電子機器に特化。',
+        representativeProducts: ['防衛指揮表示装置', '赤外線センサー', '防衛通信装置'],
+        confidenceScore: 91
+      },
+      {
+        ticker: '4274',
+        name: '細谷火工',
+        sector: '化学',
+        relevanceReason: '【防衛用火薬・照明弾】自衛隊向けの照明弾、発煙筒、救難信号弾を製造する火工品専業。防衛予算増額に伴う調達拡大恩恵が大きい。',
+        representativeProducts: ['自衛隊向け照明弾', '信号弾', '火工品'],
+        confidenceScore: 90
       }
     ];
-  } else if (q.includes('半導体') || q.includes('洗浄') || q.includes('装置')) {
+  }
+
+  // 3. 🔥 今注目の低位株・急動意株スクリーニング（※低PBR・事業再生・テーマ急動意株）
+  if (q.includes('低位') || q.includes('ボロ株') || q.includes('1000円以下') || q.includes('アンダー1000')) {
     return [
       {
-        ticker: '6920',
-        name: 'レーザーテック',
-        sector: '電気機器',
-        relevanceReason: 'EUV（極端紫外線）マスク検査装置で世界シェア100%を誇る半導体検査装置のグローバルリーダー。',
-        representativeProducts: ['EUVマスク描画位置検査装置', 'ウェハ欠陥検査装置'],
+        ticker: '7211',
+        name: '三菱自動車',
+        sector: '輸送用機器',
+        relevanceReason: '【400円台の注目の低位株】PBR0.6倍台の割安放置から買い戻しが継続。ホンダ・日産との電動化アライアンスの進展が思惑を呼ぶ。',
+        representativeProducts: ['株価400円台', 'PBR0.6倍', '低位自動車株'],
         confidenceScore: 96
       },
       {
-        ticker: '8035',
-        name: '東京エレクトロン',
-        sector: '電気機器',
-        relevanceReason: '半導体製造装置の世界大手。エッチング装置やコータ・デベロッパで世界トップクラス。',
-        representativeProducts: ['コータ・デベロッパ', 'プラズマエッチング装置'],
+        ticker: '4005',
+        name: '住友化学',
+        sector: '化学',
+        relevanceReason: '【350〜400円台の構造改革銘柄】巨額赤字からのV字回復を目指し資産売却と事業再編を急加速。底打ち反転を狙う大口資金が注目。',
+        representativeProducts: ['株価300円台後半', '業績底打ち', '再生バリュー'],
+        confidenceScore: 94
+      },
+      {
+        ticker: '7201',
+        name: '日産自動車',
+        sector: '輸送用機器',
+        relevanceReason: '【400円台の超割安低位株】PBR0.3倍台で解散価値を大幅に下回る水準。配当利回りとホンダ提携による資本効率改善がカタリスト。',
+        representativeProducts: ['株価400円台', 'PBR0.3倍台', '高配当低位'],
         confidenceScore: 92
-      }
-    ];
-  } else if (q.includes('自社株買い') || q.includes('還元') || q.includes('小型')) {
-    return [
+      },
       {
-        ticker: '9984',
-        name: 'ソフトバンクグループ',
-        sector: '情報・通信業',
-        relevanceReason: '大規模な自社株買い枠の設定と自己株式消却を定期的に発表する投資ファンド巨大企業。',
-        representativeProducts: ['ビジョン・ファンド', 'Arm'],
+        ticker: '5202',
+        name: '日本板硝子',
+        sector: 'ガラス・土石製品',
+        relevanceReason: '【400〜500円台の低位バリュー株】PBR0.4倍台の超割安放置。建築・自動車用ガラスの価格転嫁浸透で営業利益が大幅改善トレンド。',
+        representativeProducts: ['株価400円台', '低PBR改善', '建築用ガラス'],
         confidenceScore: 90
-      },
-      {
-        ticker: '8306',
-        name: '三菱UFJフィナンシャル・グループ',
-        sector: '銀行業',
-        relevanceReason: '配当引き上げおよび年間数千億円規模の自社株買いを継続実施する国内最大手メガバンク。',
-        representativeProducts: ['MUFG銀行', '三菱UFJ信託銀行'],
-        confidenceScore: 88
-      }
-    ];
-  } else {
-    return [
-      {
-        ticker: '6758',
-        name: 'ソニーグループ',
-        sector: '電気機器',
-        relevanceReason: `「${query}」に関連するエレクトロニクス・エンタメ・半導体（CMOSイメージセンサ）の複合企業。`,
-        representativeProducts: ['PlayStation 5', 'CMOSイメージセンサ', 'αカメラ'],
-        confidenceScore: 88
-      },
-      {
-        ticker: '7974',
-        name: '任天堂',
-        sector: 'その他製品',
-        relevanceReason: `「${query}」に関連するグローバルIP（マリオ、ポケモン）とゲームハード開発企業。`,
-        representativeProducts: ['Nintendo Switch', 'マリオシリーズ', 'ゼルダの伝説'],
-        confidenceScore: 84
       },
       {
         ticker: '9432',
         name: 'NTT (日本電信電話)',
         sector: '情報・通信業',
-        relevanceReason: '安定したインフラ事業と高度なIOWN光技術開発を展開するディフェンシブ優良銘柄。',
-        representativeProducts: ['IOWN', 'ドコモ光', '5G通信サービス'],
-        confidenceScore: 80
+        relevanceReason: '【150円台の超安定低位株】日本で最も手軽に投資できる超大型株。連続増配と鉄壁のインフラ基盤で個人投資家の買い支えが厚い。',
+        representativeProducts: ['株価150円台', '連続増配', '国内通信王者'],
+        confidenceScore: 90
+      },
+      {
+        ticker: '4689',
+        name: 'LINEヤフー',
+        sector: '情報・通信業',
+        relevanceReason: '【380〜400円台の大型ネット低位株】親会社資本関係の整理と国内シェアNo.1の広告・コマース基盤で反発余地が大きい低位株。',
+        representativeProducts: ['株価300円台後半', '国内最大IT基盤', '自社株買い期待'],
+        confidenceScore: 88
       }
     ];
   }
+
+  // 4. ⚡ 出来高急増・異常な商いスクリーニング
+  if (q.includes('出来高') || q.includes('商い') || q.includes('売買高') || q.includes('異常') || q.includes('急増') || q.includes('大商い')) {
+    return [
+      {
+        ticker: '7011',
+        name: '三菱重工業',
+        sector: '機械',
+        relevanceReason: '【東証売買代金連日トップ常連】防衛予算拡大、次世代原発再稼働、H3ロケット成功と国策テーマが集中。国内外機関投資家の巨額マネーが集中し大商いが継続。',
+        representativeProducts: ['防衛装備品', '次世代革新炉', '売買代金東証首位級'],
+        confidenceScore: 100
+      },
+      {
+        ticker: '6920',
+        name: 'レーザーテック',
+        sector: '電気機器',
+        relevanceReason: '【市場最強の流動性・商い集中銘柄】EUVマスク検査装置で世界シェア100%。日経平均構成銘柄の中で群を抜く売買代金を誇り、デイトレーダーと機関の主戦場。',
+        representativeProducts: ['EUVマスク検査装置', '東証売買代金トップ', '超流動性'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '6857',
+        name: 'アドバンテスト',
+        sector: '電気機器',
+        relevanceReason: '【AI半導体テスター需要爆発】米NVIDIAのAI用GPUテスターで高シェア。売買高・売買代金ともに急拡大し、半導体相場の牽引役に浮上。',
+        representativeProducts: ['GPU用半導体テスター', '出来高急増', 'AI相場主導'],
+        confidenceScore: 98
+      },
+      {
+        ticker: '3778',
+        name: 'さくらインターネット',
+        sector: '情報・通信業',
+        relevanceReason: '【大口資金集中・出来高急増株】経済産業省クラウド助成とNVIDIA製最新GPU調達の材料で売買高が異常急増。個人の資金回転が最も活発なAI銘柄。',
+        representativeProducts: ['生成AIクラウド', '政府認定クラウド', '出来高急増'],
+        confidenceScore: 96
+      },
+      {
+        ticker: '6146',
+        name: 'ディスコ',
+        sector: '機械',
+        relevanceReason: '【高水準の商いが続く半導体切断の王者】生成AI向け先端パッケージング（CoWoS）に不可欠な精密加工装置で独走。高株価ながら連日巨額の売買代金を記録。',
+        representativeProducts: ['ダイシングソー', 'グラインダ', '巨額売買代金'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '7014',
+        name: '名村造船所',
+        sector: '輸送用機器',
+        relevanceReason: '【造船大相場・異常な出来高持続】歴史的な船価上昇と受注残急増で業績が桁違いに拡大。短期資金と大口ファンドの売買が交錯し、連日猛烈な商いを記録。',
+        representativeProducts: ['大型商船・タンカー', '造船スーパーサイクル', '売買高急拡大'],
+        confidenceScore: 94
+      },
+      {
+        ticker: '3498',
+        name: '霞ヶ関キャピタル',
+        sector: '不動産業',
+        relevanceReason: '【グロース屈指の大商い急成長株】冷凍自動倉庫やアパートメントホテルの開発ファンド急成長で機関投資家の参入が加速。連日大商いが継続中。',
+        representativeProducts: ['冷凍自動倉庫', 'Fav Hotel', '大口資金回転'],
+        confidenceScore: 92
+      }
+    ];
+  }
+
+  // 5. 💎 高配当・好業績・バリュー株スクリーニング
+  if (q.includes('配当') || q.includes('利回り') || q.includes('バリュー') || q.includes('割安') || q.includes('高配当')) {
+    return [
+      {
+        ticker: '8306',
+        name: '三菱UFJフィナンシャル・グループ',
+        sector: '銀行業',
+        relevanceReason: '【高配当×金利上昇の恩恵筆頭】日銀の追加利上げで利ざや拡大が確実視。配当性向40%目標、自社株買い積極化で株主還元姿勢が極めて手厚い国内最強メガバンク。',
+        representativeProducts: ['メガバンク首位', '配当利回り約3.5%', '自社株買い'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '8316',
+        name: '三井住友フィナンシャルグループ',
+        sector: '銀行業',
+        relevanceReason: '【累進的配当と資本効率重視】減配なしの累進配当を掲げるメガバンク。高利回りと高いROE目標で海外投資家からの評価が高い。',
+        representativeProducts: ['メガバンク2位', '累進配当', '高い株主還元'],
+        confidenceScore: 98
+      },
+      {
+        ticker: '8058',
+        name: '三菱商事',
+        sector: '卸売業',
+        relevanceReason: '【累進配当を貫く総合商社王者】ウォーレン・バフェット買い増し銘柄。非資源事業のキャッシュ創出力と5,000億円超の自社株買いで圧倒的な還元を実施。',
+        representativeProducts: ['総合商社首位', '累進配当', 'バフェット銘柄'],
+        confidenceScore: 97
+      },
+      {
+        ticker: '8001',
+        name: '伊藤忠商事',
+        sector: '卸売業',
+        relevanceReason: '【非資源No.1・高配当バリュー】ファミマ等生活消費分野に強く業績安定感抜群。配当金の下限設定と機動的な自己株取得で株主価値最大化を推進。',
+        representativeProducts: ['非資源商社首位', '安定高配当', '高いROE'],
+        confidenceScore: 96
+      },
+      {
+        ticker: '2914',
+        name: '日本たばこ産業 (JT)',
+        sector: '食料品',
+        relevanceReason: '【配当利回り約5%超の鉄壁ディフェンシブ】世界展開するたばこ事業の強大なキャッシュ創出力。配当利回りトップクラスで個人投資家に不動の人気。',
+        representativeProducts: ['配当利回り5%超', '海外たばこ', '高キャッシュフロー'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '1605',
+        name: 'INPEX',
+        sector: '鉱業',
+        relevanceReason: '【原油・LNG開発最大手の高還元株】資源高と円安の恩恵を直接享受。総還元性向50%以上を掲げ、連続増配と大規模自社株買いを継続。',
+        representativeProducts: ['豪州イクシスLNG', '配当利回り約3.8%', '自社株買い'],
+        confidenceScore: 93
+      },
+      {
+        ticker: '9432',
+        name: 'NTT (日本電信電話)',
+        sector: '情報・通信業',
+        relevanceReason: '【株価150円台・連続増配ディフェンシブ】10期以上の連続増配。景気変動に左右されない通信インフラ収益で安定インカムゲインを提供。',
+        representativeProducts: ['株価150円台', '連続増配', '安定高配当'],
+        confidenceScore: 92
+      }
+    ];
+  }
+
+  // 6. 🤖 次世代AI・半導体関連の本命スクリーニング
+  if (q.includes('半導体') || q.includes('ai') || q.includes('人工知能') || q.includes('チップ') || q.includes('次世代ai')) {
+    return [
+      {
+        ticker: '6857',
+        name: 'アドバンテスト',
+        sector: '電気機器',
+        relevanceReason: '【生成AI・GPU向けテスター世界首位】米エヌビディア製AI半導体の検査需要が爆発。先端AIチップの高性能化に伴いテスト時間が長期化し受注が急拡大。',
+        representativeProducts: ['SoCテスター', 'GPU用検査装置', 'メモリテスター'],
+        confidenceScore: 100
+      },
+      {
+        ticker: '6146',
+        name: 'ディスコ',
+        sector: '機械',
+        relevanceReason: '【半導体切断・研削で世界シェア8割】生成AIの「HBM（広帯域メモリ）」積層技術や先端パッケージングに必須のダイシングソーで競合を寄せ付けない圧倒的独占。',
+        representativeProducts: ['ダイシングソー', 'グラインダ', 'SiC加工技術'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '8035',
+        name: '東京エレクトロン',
+        sector: '電気機器',
+        relevanceReason: '【半導体製造装置の世界4強】エッチング装置やコータ・デベロッパで世界首位クラス。最先端2nmプロセス向け装置の需要回復が強力な追い風。',
+        representativeProducts: ['コータ・デベロッパ', 'プラズマエッチング', '成膜装置'],
+        confidenceScore: 98
+      },
+      {
+        ticker: '6920',
+        name: 'レーザーテック',
+        sector: '電気機器',
+        relevanceReason: '【EUVフォトマスク欠陥検査装置シェア100%】微細化に不可欠なEUV露光技術において、世界中の半導体ファウンドリ（TSMC、Intel、Samsung等）が同社製装置を採用。',
+        representativeProducts: ['EUVマスク検査装置', 'ACTISシリーズ', '世界シェア100%'],
+        confidenceScore: 97
+      },
+      {
+        ticker: '3778',
+        name: 'さくらインターネット',
+        sector: '情報・通信業',
+        relevanceReason: '【国産生成AIクラウド基盤の本命】経済産業省の「クラウドプログラム」に選定。米NVIDIA製最新GPU「H100/B200」を数千基規模で配備し、国内AI開発を支える。',
+        representativeProducts: ['高火力GPUクラウド', '政府認定インフラ', '生成AI基盤'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '6526',
+        name: 'ソシオネクスト',
+        sector: '電気機器',
+        relevanceReason: '【最先端カスタムSoCファブレス大手】データセンター向けAIアクセラレータや車載自動運転向けの2nm/3nmカスタムチップを受注。高収益SoC設計モデル。',
+        representativeProducts: ['2nmカスタムSoC', 'AIアクセラレータ', '車載チップ'],
+        confidenceScore: 93
+      },
+      {
+        ticker: '4063',
+        name: '信越化学工業',
+        sector: '化学',
+        relevanceReason: '【半導体シリコンウエハー世界首位】半導体の基板材料である300mmシリコンウエハーや先端フォトレジストで世界トップシェアを握る素材の巨人。',
+        representativeProducts: ['シリコンウエハー', 'フォトレジスト', '半導体材料'],
+        confidenceScore: 92
+      }
+    ];
+  }
+
+  // 7. 🚀 宇宙・航空宇宙・サテライト関連
+  if (q.includes('宇宙') || q.includes('ロケット') || q.includes('衛星')) {
+    return [
+      {
+        ticker: '7011',
+        name: '三菱重工業',
+        sector: '機械',
+        relevanceReason: '【大型ロケットH3の主幹事企業】JAXAと共同で新型基幹ロケット「H3」の開発・製造・打ち上げを統括する日本の宇宙開発の司令塔。',
+        representativeProducts: ['H3ロケット', '国際宇宙ステーション関連', '宇宙機器'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '7013',
+        name: 'IHI',
+        sector: '機械',
+        relevanceReason: '【宇宙ロケットモーター・推進系】IHIエアロスペースを通じて「イプシロン」ロケットの機体システムや各種ロケットエンジンを製造。',
+        representativeProducts: ['固体燃料ロケット', '衛星推進装置', 'ロケットモーター'],
+        confidenceScore: 96
+      },
+      {
+        ticker: '9412',
+        name: 'スカパーJSATホールディングス',
+        sector: '情報・通信業',
+        relevanceReason: '【アジア最大の衛星通信事業者】静止軌道上に多数の通信衛星を保有・運用。防衛省向け衛星通信網や宇宙デブリ除去プロジェクトも推進。',
+        representativeProducts: ['通信衛星運用', '防衛衛星回線', '宇宙ゴミ除去'],
+        confidenceScore: 93
+      },
+      {
+        ticker: '5595',
+        name: 'QPS研究所',
+        sector: '情報・通信業',
+        relevanceReason: '【小型SAR衛星コンステレーション】天候や昼夜を問わず地表を観測できる小型SAR衛星を自社開発。防衛省や民間向けの準リアルタイム観測データを提供。',
+        representativeProducts: ['小型SAR衛星', '高分解能地表観測', '宇宙ベンチャー'],
+        confidenceScore: 91
+      }
+    ];
+  }
+
+  // 8. 🚗 自動運転・EV・自動車関連
+  if (q.includes('自動車') || q.includes('車') || q.includes('ev') || q.includes('自動運転')) {
+    return [
+      {
+        ticker: '7203',
+        name: 'トヨタ自動車',
+        sector: '輸送用機器',
+        relevanceReason: '世界最大手の自動車メーカー。HVで圧倒的利益を創出しつつ、全方位電動化・自動運転ソフトウェア基盤（Arene）の開発を加速。',
+        representativeProducts: ['プリウス', 'クラウン', '全方位モビリティ'],
+        confidenceScore: 99
+      },
+      {
+        ticker: '6902',
+        name: 'デンソー',
+        sector: '輸送用機器',
+        relevanceReason: '世界トップクラスの自動車部品メガサプライヤー。ADAS（先進運転支援システム）やEV向けインバータで高いシェア。',
+        representativeProducts: ['ADASセンサー', 'EVインバータ', 'SiCパワー半導体'],
+        confidenceScore: 95
+      },
+      {
+        ticker: '7267',
+        name: 'ホンダ (本田技研工業)',
+        sector: '輸送用機器',
+        relevanceReason: '世界初のレベル3自動運転の実用化実績。日産との包括的協業で次世代EVおよびソフトウェア共通化を推進。',
+        representativeProducts: ['N-BOX', 'レベル3自動運転', 'EV新シリーズ「0」'],
+        confidenceScore: 93
+      },
+      {
+        ticker: '6758',
+        name: 'ソニーグループ',
+        sector: '電気機器',
+        relevanceReason: 'ホンダとの合弁でEV「AFEELA」を開発。車載用CMOSイメージセンサーで世界シェア首位を目指し急拡大。',
+        representativeProducts: ['AFEELA (EV)', '車載CMOSセンサ', 'モビリティエンタメ'],
+        confidenceScore: 90
+      }
+    ];
+  }
+
+  // デフォルト: ユーザーの言葉に対して東証を代表する超大型・優良主力株群をバランスよく提示
+  return [
+    {
+      ticker: '7203',
+      name: 'トヨタ自動車',
+      sector: '輸送用機器',
+      relevanceReason: `「${query}」に関わる市場の代表的銘柄。日本企業初の営業利益5兆円を達成した世界首位の自動車メーカー。`,
+      representativeProducts: ['ハイブリッド車', 'モビリティカンパニー', '東証時価総額首位級'],
+      confidenceScore: 88
+    },
+    {
+      ticker: '6758',
+      name: 'ソニーグループ',
+      sector: '電気機器',
+      relevanceReason: `「${query}」に関連するグローバル複合テクノロジー企業。ゲーム、半導体（CMOSセンサ）、音楽・映画の3本柱。`,
+      representativeProducts: ['PlayStation 5', 'CMOSイメージセンサ', '世界的大型エンタメIP'],
+      confidenceScore: 85
+    },
+    {
+      ticker: '8306',
+      name: '三菱UFJフィナンシャル・グループ',
+      sector: '銀行業',
+      relevanceReason: `「${query}」にも関連する国内最大の金融グループ。日銀の利上げ局面で利ざや改善期待が続く高配当優良株。`,
+      representativeProducts: ['メガバンク首位', '配当利回り約3.5%', '自社株買い積極化'],
+      confidenceScore: 84
+    },
+    {
+      ticker: '9983',
+      name: 'ファーストリテイリング',
+      sector: '小売業',
+      relevanceReason: `「${query}」に関連するグローバルSPAアパレル王者。「ユニクロ」「GU」を欧米・アジアで積極展開し高成長。`,
+      representativeProducts: ['ユニクロ (UNIQLO)', 'ジーユー (GU)', '日経平均最大寄与銘柄'],
+      confidenceScore: 82
+    },
+    {
+      ticker: '6861',
+      name: 'キーエンス',
+      sector: '電気機器',
+      relevanceReason: `「${query}」に関連するファクトリーオートメーションの巨人。営業利益率50%を超える圧倒的な高収益企業。`,
+      representativeProducts: ['FA用センサ', '画像処理機器', '超高収益ビジネスモデル'],
+      confidenceScore: 80
+    },
+    {
+      ticker: '9432',
+      name: 'NTT (日本電信電話)',
+      sector: '情報・通信業',
+      relevanceReason: `「${query}」に関連する日本の通信インフラの要。株価150円台で10期以上連続増配を継続する鉄壁のディフェンシブ株。`,
+      representativeProducts: ['株価150円台', '連続増配', '次世代光ネットワークIOWN'],
+      confidenceScore: 80
+    }
+  ];
 }
 
 function getFallbackStockImpact(title: string): { impactAnalysis: StockImpactAnalysis; impactMatrix: ImpactMatrix } {

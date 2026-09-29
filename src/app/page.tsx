@@ -127,6 +127,7 @@ const INITIAL_TIMELINE: TimelineItem[] = [
 export default function HomePage() {
   const { user, isLoggedIn } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchInitialQuery, setSearchInitialQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [watchlistStocks, setWatchlistStocks] = useState<FavoriteStockMeta[]>([]);
   // 初期データであらかじめレンダリング（白画面や無限ローディングを完全防止）
@@ -363,7 +364,10 @@ export default function HomePage() {
             <div className="pt-2 space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <button
-                  onClick={() => setIsSearchOpen(true)}
+                  onClick={() => {
+                    setSearchInitialQuery('');
+                    setIsSearchOpen(true);
+                  }}
                   className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 text-black font-extrabold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/25 active:scale-98 cursor-pointer"
                 >
                   <Sparkles className="w-5 h-5" />
@@ -384,26 +388,47 @@ export default function HomePage() {
               <div className="flex items-center gap-1.5 flex-wrap text-xs">
                 <span className="text-gray-400 font-bold text-[11px]">人気の言葉で探す:</span>
                 <button
-                  onClick={() => setIsSearchOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-[11px] transition-all"
+                  onClick={() => {
+                    setSearchInitialQuery('今注目の低位株');
+                    setIsSearchOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-[11px] transition-all cursor-pointer"
                 >
                   🔥 今注目の低位株
                 </button>
                 <button
-                  onClick={() => setIsSearchOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-[11px] transition-all"
-                >
-                  ⚡ 出来高が異常にできてる株
-                </button>
-                <button
-                  onClick={() => setIsSearchOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold text-[11px] transition-all"
+                  onClick={() => {
+                    setSearchInitialQuery('株価500円以下の割安低位株');
+                    setIsSearchOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold text-[11px] transition-all cursor-pointer"
                 >
                   💎 株価500円以下の割安株
                 </button>
                 <button
-                  onClick={() => setIsSearchOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-all hidden sm:inline-block"
+                  onClick={() => {
+                    setSearchInitialQuery('防衛 国策テーマ株');
+                    setIsSearchOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold text-[11px] transition-all cursor-pointer"
+                >
+                  🛡️ 防衛・国策テーマ株
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchInitialQuery('ここ最近出来高が異常にできてる株');
+                    setIsSearchOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-[11px] transition-all cursor-pointer"
+                >
+                  ⚡ 出来高が異常にできてる株
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchInitialQuery('高配当 好業績 バリュー株');
+                    setIsSearchOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-all hidden sm:inline-block cursor-pointer"
                 >
                   💰 高配当×好業績
                 </button>
@@ -807,6 +832,7 @@ export default function HomePage() {
       <SemanticSearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+        initialQuery={searchInitialQuery}
       />
 
       <PdfViewerModal

@@ -23,7 +23,7 @@ interface StockTabsProps {
   onOpenPartner: (partner: any) => void;
 }
 
-type TabType = 'news' | 'disclosures' | 'earnings' | 'partnerships' | 'products' | 'global' | 'financials' | 'pdfVault' | 'aiOverview';
+type TabType = 'timeline' | 'aiOverview' | 'news' | 'disclosures' | 'earnings' | 'partnerships' | 'products' | 'global' | 'financials' | 'pdfVault';
 
 export const StockTabs: React.FC<StockTabsProps> = ({
   ticker,
@@ -40,7 +40,7 @@ export const StockTabs: React.FC<StockTabsProps> = ({
   onOpenImpact,
   onOpenPartner
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('aiOverview');
+  const [activeTab, setActiveTab] = useState<TabType>('timeline');
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   const { enabledAiList } = useExternalAiSettings();
@@ -57,6 +57,7 @@ export const StockTabs: React.FC<StockTabsProps> = ({
   };
 
   const tabs = [
+    { id: 'timeline', label: '📰 時系列タイムライン（全て）', count: timeline.length },
     { id: 'aiOverview', label: '🤖 Geminiさんの企業徹底解読', count: undefined },
     { id: 'news', label: '📰 最新ニュース', count: news.length },
     { id: 'disclosures', label: '📢 適時開示', count: disclosures.length },
@@ -313,23 +314,43 @@ export const StockTabs: React.FC<StockTabsProps> = ({
           </div>
         )}
 
-        {/* 📰 1. 最新ニュース / 2. 適時開示 / 3. 決算 / 4. 提携 */}
-        {(activeTab === 'news' || activeTab === 'disclosures' || activeTab === 'earnings' || activeTab === 'partnerships') && (
-          <Timeline
-            items={
-              activeTab === 'news'
-                ? timeline.filter(t => t.type === 'news' || t.category === 'news')
-                : (activeTab === 'disclosures'
-                    ? timeline.filter(t => t.rawDisclosureItem)
-                    : (activeTab === 'earnings'
-                        ? timeline.filter(t => t.category === 'earnings')
-                        : timeline.filter(t => t.category === 'partnership' || t.category === 'ma')))
-            }
-            onOpenPdf={onOpenPdf}
-            onOpenChat={onOpenChat}
-            onOpenImpact={onOpenImpact}
-            onOpenPartner={onOpenPartner}
-          />
+        {/* 📰 0. 時系列タイムライン（全て） / 1. 最新ニュース / 2. 適時開示 / 3. 決算 / 4. 提携 */}
+        {(activeTab === 'timeline' || activeTab === 'news' || activeTab === 'disclosures' || activeTab === 'earnings' || activeTab === 'partnerships') && (
+          <div className="space-y-4">
+            {activeTab === 'timeline' && (
+              <div className="p-3 sm:p-4 rounded-xl bg-gradient-to-r from-cyan-950/30 via-gray-900 to-indigo-950/30 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-md">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-md bg-cyan-500/20 text-cyan-300 font-bold px-2 border border-cyan-500/40">
+                    時系列最新順
+                  </span>
+                  <p className="text-gray-300">
+                    <strong className="text-white">{stockName}</strong> に関する報道・市況ニュースおよび東証適時開示資料をリアルタイムで時系列に集約しています。
+                  </p>
+                </div>
+                <span className="text-[11px] font-mono text-cyan-400 bg-gray-950/80 px-2.5 py-1 rounded-lg border border-gray-800 shrink-0">
+                  全 {timeline.length} 件のタイムライン
+                </span>
+              </div>
+            )}
+
+            <Timeline
+              items={
+                activeTab === 'timeline'
+                  ? timeline
+                  : (activeTab === 'news'
+                      ? timeline.filter(t => t.type === 'news' || t.category === 'news')
+                      : (activeTab === 'disclosures'
+                          ? timeline.filter(t => t.rawDisclosureItem)
+                          : (activeTab === 'earnings'
+                              ? timeline.filter(t => t.category === 'earnings')
+                              : timeline.filter(t => t.category === 'partnership' || t.category === 'ma'))))
+              }
+              onOpenPdf={onOpenPdf}
+              onOpenChat={onOpenChat}
+              onOpenImpact={onOpenImpact}
+              onOpenPartner={onOpenPartner}
+            />
+          </div>
         )}
 
         {/* 🏭 5. 商品・サービス一覧 */}

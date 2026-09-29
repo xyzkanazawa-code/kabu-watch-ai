@@ -678,8 +678,93 @@ export async function fetchStockInfo(rawTicker: string): Promise<StockInfo> {
   };
 }
 
-// Google News RSSフェッチ
-export async function fetchGoogleNews(ticker: string, stockName: string): Promise<NewsItem[]> {
+// Yahoo!ファイナンスから個別銘柄の最新ニュースをリアルタイム取得
+export async function fetchYahooStockNews(ticker: string, stockName: string): Promise<NewsItem[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+    const url = `https://finance.yahoo.co.jp/quote/${ticker}.T/news`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+      },
+      next: { revalidate: 180 }, // 3分間キャッシュ
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return [];
+
+    const html = await res.text();
+    const articleMatches = html.match(/<article[\s\S]*?<\/article>/g) || [];
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    const items: NewsItem[] = [];
+
+    for (let idx = 0; idx < articleMatches.length; idx++) {
+      const art = articleMatches[idx];
+      const linkMatch = art.match(/href="([^"]*news\/detail\/[^"]*)"/);
+      const titleMatch = art.match(/<h3[^>]*>([\s\S]*?)<\/h3>/);
+      const timeMatch = art.match(/<time[^>]*>([\s\S]*?)<\/time>/);
+      const mediaMatch = art.match(/<li[^>]*supplement--media[^"]*"[^>]*>([\s\S]*?)<\/li>/);
+
+      const rawTitle = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+      if (!rawTitle) continue;
+
+      const rawLink = linkMatch ? linkMatch[1] : '';
+      const fullLink = rawLink.startsWith('http') ? rawLink : `https://finance.yahoo.co.jp${rawLink}`;
+      const timeStr = timeMatch ? timeMatch[1].trim() : '';
+      const media = mediaMatch ? mediaMatch[1].replace(/<[^>]+>/g, '').trim() : 'Yahoo!ファイナンス';
+
+      // 日付の整形（例: "9/28 15:30", "9/28", "12:15"）
+      let formattedDate = `${currentYear}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')} 12:00`;
+      if (timeStr.includes('/')) {
+        const parts = timeStr.split(' ');
+        const [m, d] = parts[0].split('/');
+        const timePart = parts[1] || '15:00';
+        formattedDate = `${currentYear}/${m.padStart(2, '0')}/${d.padStart(2, '0')} ${timePart}`;
+      } else if (timeStr.includes(':')) {
+        formattedDate = `${currentYear}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')} ${timeStr}`;
+      }
+
+      const isPartnership = rawTitle.includes('提携') || rawTitle.includes('協業') || rawTitle.includes('M&A') || rawTitle.includes('買収');
+      const isProduct = rawTitle.includes('新発売') || rawTitle.includes('開発') || rawTitle.includes('リリース') || rawTitle.includes('製品') || rawTitle.includes('投入');
+      const isEarnings = rawTitle.includes('決算') || rawTitle.includes('業績') || rawTitle.includes('上方修正') || rawTitle.includes('下方修正') || rawTitle.includes('増益') || rawTitle.includes('減益');
+
+      items.push({
+        id: `ynews-${ticker}-${idx}-${Date.now()}`,
+        ticker,
+        stockName,
+        title: rawTitle,
+        source: media,
+        publishedAt: formattedDate,
+        url: fullLink,
+        snippet: `【${media}】${rawTitle}。${stockName}に関する最新市況ニュースです。`,
+        category: isPartnership ? 'partnership' : (isProduct ? 'product' : (isEarnings ? 'earnings' : 'news')),
+        impactMatrix: {
+          importanceScore: (isEarnings || isPartnership ? 5 : (idx < 3 ? 4 : 3)) as 1 | 2 | 3 | 4 | 5,
+          earningsImpact: isEarnings ? 'あり' : '軽微',
+          financialImpact: isEarnings ? 'あり' : 'なし',
+          businessImpact: isPartnership ? '大' : '中',
+          marketImpact: isPartnership ? '短期急騰の可能性' : (isEarnings ? '要確認' : '織り込み済み'),
+        },
+        isNew: idx < 3,
+      });
+    }
+
+    return items;
+  } catch (e) {
+    console.warn(`Yahoo news fetch error for ${ticker}:`, e);
+    return [];
+  }
+}
+
+// Google News RSSフェッチ補助関数
+async function fetchGoogleNewsFromRss(ticker: string, stockName: string): Promise<NewsItem[]> {
   try {
     const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(stockName)}+${ticker}&hl=ja&gl=JP&ceid=JP:ja`;
     const res = await fetch(rssUrl, { next: { revalidate: 300 } });
@@ -700,12 +785,11 @@ export async function fetchGoogleNews(ticker: string, stockName: string): Promis
       return true;
     });
 
-    const newsList: NewsItem[] = filteredItems.slice(0, 8).map((item: any, idx: number) => {
+    const newsList: NewsItem[] = filteredItems.slice(0, 10).map((item: any, idx: number) => {
       const rawTitle = item.title?.[0] || '';
       let title = rawTitle;
       let source = item.source?.[0]?._ || 'Google ニュース';
 
-      // "記事タイトル - メディア名" 形式からメディア名を分離して整形
       const lastDashIdx = rawTitle.lastIndexOf(' - ');
       if (lastDashIdx > 0) {
         title = rawTitle.substring(0, lastDashIdx).trim();
@@ -723,7 +807,6 @@ export async function fetchGoogleNews(ticker: string, stockName: string): Promis
       const isEarnings = title.includes('決算') || title.includes('業績') || title.includes('上方修正') || title.includes('下方修正') || title.includes('増益') || title.includes('減益');
       const isMarket = title.includes('急騰') || title.includes('下落') || title.includes('目標株価') || title.includes('レーティング') || title.includes('反発') || title.includes('続伸');
 
-      // 内容が書かれていない問題を解決するための意味のある概要スニペット生成
       let generatedSnippet = '';
       if (isPartnership) {
         generatedSnippet = `【${source}報道】他社との業務提携や協業・資本参加に関する発表です。事業シナジーの創出や新規市場開拓への波及効果が注目されます。`;
@@ -737,13 +820,16 @@ export async function fetchGoogleNews(ticker: string, stockName: string): Promis
         generatedSnippet = `【${source}報道】${stockName}に関する最新ニュースです。元記事リンクより報道の詳細や業績への背景を閲覧いただけます。`;
       }
 
+      const d = new Date(pubDate);
+      const formattedDate = `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
       return {
         id: `news-${ticker}-${idx}-${Date.now()}`,
         ticker,
         stockName,
         title,
         source,
-        publishedAt: new Date(pubDate).toISOString().split('T')[0] + ' ' + new Date(pubDate).toTimeString().slice(0, 5),
+        publishedAt: formattedDate,
         url: link,
         snippet: generatedSnippet,
         category: isPartnership ? 'partnership' : (isProduct ? 'product' : (isEarnings ? 'earnings' : 'news')),
@@ -758,9 +844,44 @@ export async function fetchGoogleNews(ticker: string, stockName: string): Promis
       };
     });
 
-    if (newsList.length > 0) return newsList;
+    return newsList;
   } catch (err) {
-    console.warn(`Google News fetch warning for ${ticker}:`, err);
+    console.warn(`Google News RSS fetch warning for ${ticker}:`, err);
+    return [];
+  }
+}
+
+// Google News & Yahooファイナンスニュースを統合して最新時系列で取得
+export async function fetchGoogleNews(ticker: string, stockName: string): Promise<NewsItem[]> {
+  try {
+    const [yahooItems, googleItems] = await Promise.all([
+      fetchYahooStockNews(ticker, stockName),
+      fetchGoogleNewsFromRss(ticker, stockName),
+    ]);
+
+    const combined = [...yahooItems, ...googleItems];
+
+    // タイトル類似による重複排除
+    const seen = new Set<string>();
+    const deduplicated: NewsItem[] = [];
+    for (const item of combined) {
+      const cleanTitleKey = item.title.slice(0, 20).replace(/\s+/g, '');
+      if (!seen.has(cleanTitleKey)) {
+        seen.add(cleanTitleKey);
+        deduplicated.push(item);
+      }
+    }
+
+    if (deduplicated.length > 0) {
+      // 日付順ソート (最新が上)
+      return deduplicated.sort((a, b) => {
+        const timeA = new Date(a.publishedAt.replace(/\//g, '-')).getTime() || 0;
+        const timeB = new Date(b.publishedAt.replace(/\//g, '-')).getTime() || 0;
+        return timeB - timeA;
+      });
+    }
+  } catch (err) {
+    console.warn(`Integrated news fetch warning for ${ticker}:`, err);
   }
 
   // フォールバックニュース
@@ -931,7 +1052,11 @@ export async function fetchMergedTimeline(ticker: string, stockName: string): Pr
   });
 
   // 日付順ソート (降順: 最新が上)
-  return timelineList.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  return timelineList.sort((a, b) => {
+    const timeA = new Date(a.publishedAt.replace(/\//g, '-')).getTime() || 0;
+    const timeB = new Date(b.publishedAt.replace(/\//g, '-')).getTime() || 0;
+    return timeB - timeA;
+  });
 }
 
 // 業績推移データ

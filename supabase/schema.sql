@@ -99,3 +99,27 @@ ON public.weekend_stock_picks FOR SELECT TO public USING (true);
 CREATE POLICY "Allow insert on weekend_stock_picks"
 ON public.weekend_stock_picks FOR INSERT TO public WITH CHECK (true);
 
+-- ========================================================
+-- 外部AI調査メモ・見解共有テーブル (みんなで見れる共有知見ナレッジ)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS public.stock_ai_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker VARCHAR(10) NOT NULL,
+    ai_type VARCHAR(50) NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_name TEXT DEFAULT '投資家メンバー',
+    author_id TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_ai_notes_ticker_created 
+ON public.stock_ai_notes (ticker, created_at DESC);
+
+ALTER TABLE public.stock_ai_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read on stock_ai_notes" ON public.stock_ai_notes FOR SELECT TO public USING (true);
+CREATE POLICY "Allow insert on stock_ai_notes" ON public.stock_ai_notes FOR INSERT TO public WITH CHECK (true);
+CREATE POLICY "Allow update on stock_ai_notes" ON public.stock_ai_notes FOR UPDATE TO public USING (true);
+CREATE POLICY "Allow delete on stock_ai_notes" ON public.stock_ai_notes FOR DELETE TO public USING (true);
+

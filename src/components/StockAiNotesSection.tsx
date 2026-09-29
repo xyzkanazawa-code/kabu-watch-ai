@@ -13,21 +13,29 @@ import {
   Edit3, 
   ClipboardPaste, 
   Clock, 
+  Calendar,
+  Users,
+  Globe,
   ExternalLink,
   MessageSquareText,
   FileText,
   CheckCircle2,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { 
   StockAiNote, 
   AiType, 
-  getStockAiNotes, 
-  addStockAiNote, 
-  updateStockAiNote, 
-  deleteStockAiNote, 
-  getAiDefaultName 
+  getLocalStockAiNotes,
+  fetchSharedStockAiNotes,
+  addSharedStockAiNote,
+  deleteSharedStockAiNote,
+  getAiDefaultName,
+  formatDateJP,
+  formatDateTimeJP,
+  formatShortDate
 } from '@/lib/stockAiNotesStorage';
+import { useAuth } from '@/lib/useAuth';
 
 interface Props {
   ticker: string;
@@ -90,7 +98,6 @@ const FormattedAiContent: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
 
   const renderFormattedLine = (line: string) => {
-    // **太字** のハイライト
     const parts = line.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
@@ -109,7 +116,6 @@ const FormattedAiContent: React.FC<{ content: string }> = ({ content }) => {
       {lines.map((line, idx) => {
         const trimmed = line.trim();
 
-        // 空行
         if (!trimmed) {
           return <div key={idx} className="h-2" />;
         }
@@ -168,7 +174,6 @@ const FormattedAiContent: React.FC<{ content: string }> = ({ content }) => {
           );
         }
 
-        // 通常の文章段落
         return (
           <p key={idx} className="text-xs sm:text-sm text-gray-200 leading-relaxed">
             {renderFormattedLine(line)}
@@ -180,28 +185,43 @@ const FormattedAiContent: React.FC<{ content: string }> = ({ content }) => {
 };
 
 export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
+  const { user } = useAuth();
   const [notes, setNotes] = useState<StockAiNote[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // フォーム用ステート
   const [selectedAi, setSelectedAi] = useState<AiType>('gemini');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
+  const [authorNameInput, setAuthorNameInput] = useState('');
   const [isCopied, setIsCopied] = useState<string | null>(null);
   const [pasteSuccess, setPasteSuccess] = useState(false);
 
   useEffect(() => {
-    loadNotes();
+    // 1. 即座にローカルキャッシュを表示して体感速度UP
+    const local = getLocalStockAiNotes(ticker);
+    setNotes(local);
+    if (local.length > 0 && !expandedId) {
+      setExpandedId(local[0].id);
+    }
+
+    // 2. 共有サーバー（全ユーザー共通）から最新の見解を取得
+    loadSharedNotes();
   }, [ticker]);
 
-  const loadNotes = () => {
-    const list = getStockAiNotes(ticker);
-    setNotes(list);
-    // 初回ロード時、直近のメモがあれば自動展開
-    if (list.length > 0 && !expandedId) {
-      setExpandedId(list[0].id);
+  const loadSharedNotes = async () => {
+    setIsLoading(true);
+    try {
+      const serverNotes = await fetchSharedStockAiNotes(ticker);
+      setNotes(serverNotes);
+      if (serverNotes.length > 0 && !expandedId) {
+        setExpandedId(serverNotes[0].id);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -209,17 +229,9 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
     setSelectedAi(aiType);
     setNoteTitle(`${getAiDefaultName(aiType)}の見解`);
     setNoteContent('');
-    setEditingNoteId(null);
+    setAuthorNameInput(user?.name || 'マサ');
     setIsModalOpen(true);
     setPasteSuccess(false);
-  };
-
-  const handleOpenEditModal = (note: StockAiNote) => {
-    setSelectedAi(note.aiType);
-    setNoteTitle(note.title);
-    setNoteContent(note.content);
-    setEditingNoteId(note.id);
-    setIsModalOpen(true);
   };
 
   const handlePasteFromClipboard = async () => {
@@ -237,34 +249,36 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
     }
   };
 
-  const handleSave = () => {
-    if (!noteContent.trim()) return;
+  const handleSave = async () => {
+    if (!noteContent.trim() || isSubmitting) return;
 
-    if (editingNoteId) {
-      const updated = updateStockAiNote(ticker, editingNoteId, {
+    setIsSubmitting(true);
+    try {
+      const author = authorNameInput.trim() || user?.name || '投資家メンバー';
+      const created = await addSharedStockAiNote(ticker, {
         aiType: selectedAi,
         title: noteTitle.trim() || `${getAiDefaultName(selectedAi)}の見解`,
         content: noteContent.trim(),
+        authorName: author,
+        authorId: user?.id,
       });
+
+      // リスト更新と展開
+      const updated = await fetchSharedStockAiNotes(ticker);
       setNotes(updated);
-      setExpandedId(editingNoteId);
-    } else {
-      const newNote = addStockAiNote(ticker, {
-        aiType: selectedAi,
-        title: noteTitle.trim() || `${getAiDefaultName(selectedAi)}の見解`,
-        content: noteContent.trim(),
-      });
-      loadNotes();
-      setExpandedId(newNote.id);
+      setExpandedId(created.id);
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Failed to save shared note:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('このAIの見解メモを削除しますか？')) {
-      const updated = deleteStockAiNote(ticker, id);
+    if (confirm('このAI見解メモを削除しますか？（共有サーバーからも削除されます）')) {
+      const updated = await deleteSharedStockAiNote(ticker, id);
       setNotes(updated);
       if (expandedId === id) {
         setExpandedId(updated.length > 0 ? updated[0].id : null);
@@ -290,24 +304,25 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
   };
 
   return (
-    <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-b from-[#0e1628] via-[#0b1120] to-[#080d19] p-4 sm:p-5 shadow-xl space-y-4">
+    <div className="rounded-2xl border border-cyan-500/35 bg-gradient-to-b from-[#0e1628] via-[#0b1120] to-[#080d19] p-4 sm:p-5 shadow-xl space-y-4">
       {/* セクションヘッダー */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-800/80">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-sm">
-            <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-indigo-500/20 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-sm shrink-0">
+            <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-black text-white flex items-center gap-1.5">
                 AI調査メモ・見解ストック
               </h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
-                {notes.length}件 保存中
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1">
+                <Globe className="w-2.5 h-2.5" />
+                全投資家で共有中 ({notes.length}件)
               </span>
             </div>
-            <p className="text-[11px] text-gray-400">
-              端末のGeminiやChatGPTで調べた回答を貼り付けて、いつでもボタン1つで展開して閲覧できます
+            <p className="text-[11px] text-gray-300 mt-0.5">
+              端末のGeminiなどで調べた回答を貼り付けると、<strong>入力年月日・調査日つき</strong>でみんなが見られる知見として保存・共有されます
             </p>
           </div>
         </div>
@@ -316,10 +331,10 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleOpenAddModal('gemini')}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 active:scale-95 transition-all cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 active:scale-95 transition-all cursor-pointer"
           >
-            <ClipboardPaste className="w-3.5 h-3.5" />
-            <span>AIの回答を貼り付ける</span>
+            <ClipboardPaste className="w-4 h-4" />
+            <span>AIの回答を貼り付ける（共有）</span>
           </button>
         </div>
       </div>
@@ -329,21 +344,21 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
         <div className="py-6 px-4 rounded-xl border border-dashed border-gray-800 bg-gray-900/40 text-center space-y-2">
           <Bot className="w-8 h-8 text-gray-600 mx-auto" />
           <p className="text-xs font-semibold text-gray-300">
-            まだAIの見解メモが保存されていません
+            まだこの銘柄のAI見解メモが保存されていません
           </p>
-          <p className="text-[11px] text-gray-500 max-w-md mx-auto">
-            上の「外部AIワンタップ相談」でGeminiに質問したあと、得られた長文の回答を「AIの回答を貼り付ける」ボタンからペーストすると、ここに「Geminiの見解」ボタンが作成されます。
+          <p className="text-[11px] text-gray-400 max-w-md mx-auto">
+            上の「外部AIワンタップ相談」でGeminiに質問したあと、得られた長文の回答を「AIの回答を貼り付ける」からペーストすると、入力年月日つきの「Geminiの見解」ボタンが作成され、みんなで共有できます！
           </p>
           <div className="pt-2 flex justify-center gap-2">
             <button
               onClick={() => handleOpenAddModal('gemini')}
-              className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition-all"
+              className="px-3.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition-all"
             >
               + Geminiの見解を貼り付ける
             </button>
             <button
               onClick={() => handleOpenAddModal('chatgpt')}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all"
             >
               + ChatGPTの見解を貼り付ける
             </button>
@@ -351,28 +366,42 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* ボタン群（カルーセルまたは折り返し配置） */}
+          {/* ボタン群（各AIボタン + 入力年月日バッジ + 文字数） */}
           <div className="flex items-center gap-2 flex-wrap">
             {notes.map((note) => {
               const style = getAiStyle(note.aiType);
               const isExpanded = expandedId === note.id;
+              const dateStr = formatShortDate(note.createdAt);
+
               return (
                 <button
                   key={note.id}
                   onClick={() => toggleExpand(note.id)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 border ${
+                  className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 border ${
                     isExpanded
-                      ? `bg-gradient-to-r ${style.gradient} text-white ${style.border} ring-2 ring-cyan-400/30`
-                      : `bg-gray-900/90 hover:bg-gray-800 text-gray-200 border-gray-700/80 hover:border-gray-600`
+                      ? `bg-gradient-to-r ${style.gradient} text-white ${style.border} ring-2 ring-cyan-400/40 shadow-cyan-500/20`
+                      : `bg-gray-900/90 hover:bg-gray-800 text-gray-200 border-gray-700/80 hover:border-cyan-500/40`
                   }`}
+                  title={`${note.title}（入力年月日: ${formatDateTimeJP(note.createdAt)}）`}
                 >
                   <Sparkles className={`w-3.5 h-3.5 ${isExpanded ? 'text-white' : style.iconColor}`} />
                   <span>{note.title}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                  
+                  {/* 📅 入力年月日バッジ */}
+                  <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    isExpanded ? 'bg-black/30 text-cyan-100' : 'bg-gray-800 text-cyan-400 border border-cyan-500/20'
+                  }`}>
+                    <Calendar className="w-2.5 h-2.5" />
+                    {dateStr}
+                  </span>
+
+                  {/* 文字数 */}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                     isExpanded ? 'bg-black/30 text-white/90' : 'bg-gray-800 text-gray-400'
                   }`}>
                     {note.content.length.toLocaleString()}文字
                   </span>
+
                   {isExpanded ? (
                     <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
                   ) : (
@@ -390,67 +419,66 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
             const style = getAiStyle(currentNote.aiType);
 
             return (
-              <div className="rounded-xl border border-cyan-500/30 bg-[#0d1527]/90 p-4 sm:p-5 space-y-3 shadow-inner animate-fade-in">
+              <div className="rounded-xl border border-cyan-500/40 bg-[#0d1527]/95 p-4 sm:p-5 space-y-4 shadow-2xl animate-fade-in">
                 {/* 見解パネルの上部コントロールバー */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-gray-800">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r ${style.gradient} text-white text-xs font-black shadow-sm`}>
-                      <Bot className="w-3.5 h-3.5" />
-                      {getAiDefaultName(currentNote.aiType)}
-                    </span>
-                    <h4 className="text-sm font-bold text-white">
-                      {currentNote.title}
-                    </h4>
-                    <span className="text-[11px] text-gray-400 flex items-center gap-1 ml-1">
-                      <Clock className="w-3 h-3 text-gray-500" />
-                      {new Date(currentNote.createdAt).toLocaleDateString('ja-JP', {
-                        month: 'numeric',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-800">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r ${style.gradient} text-white text-xs font-black shadow-sm`}>
+                        <Bot className="w-3.5 h-3.5" />
+                        {getAiDefaultName(currentNote.aiType)}
+                      </span>
+                      <h4 className="text-sm sm:text-base font-black text-white">
+                        {currentNote.title}
+                      </h4>
+                    </div>
+
+                    {/* 🗓️ 入力年月日・時間 ＆ 投稿者情報 */}
+                    <div className="flex items-center gap-3 text-xs text-gray-300 flex-wrap pt-0.5">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-semibold text-[11px]">
+                        <Calendar className="w-3 h-3 text-cyan-400" />
+                        入力年月日: <strong>{formatDateTimeJP(currentNote.createdAt)}</strong>
+                      </span>
+
+                      {currentNote.authorName && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                          <Users className="w-3 h-3 text-indigo-400" />
+                          共有者: <span className="text-gray-200 font-bold">{currentNote.authorName}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 self-end sm:self-auto">
                     <button
                       onClick={(e) => handleCopy(currentNote.content, currentNote.id, e)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[11px] font-semibold transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-semibold transition-colors"
                       title="見解の全文をコピー"
                     >
                       {isCopied === currentNote.id ? (
                         <>
-                          <Check className="w-3 h-3 text-emerald-400" />
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
                           <span className="text-emerald-400">コピー済</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-3.5 h-3.5" />
                           <span>コピー</span>
                         </>
                       )}
                     </button>
 
                     <button
-                      onClick={() => handleOpenEditModal(currentNote)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[11px] font-semibold transition-colors"
-                      title="編集"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      <span>編集</span>
-                    </button>
-
-                    <button
                       onClick={(e) => handleDelete(currentNote.id, e)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-[11px] font-semibold border border-rose-800/40 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-semibold border border-rose-800/40 transition-colors"
                       title="削除"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
 
                     <button
                       onClick={() => setExpandedId(null)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white text-[11px] transition-colors ml-1"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800/90 hover:bg-gray-700 text-gray-300 hover:text-white text-xs transition-colors ml-1"
                       title="折りたたむ"
                     >
                       <ChevronUp className="w-3.5 h-3.5" />
@@ -460,15 +488,15 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                 </div>
 
                 {/* 見解本文（長文でも読みやすいスクロール＆タイポグラフィ） */}
-                <div className="max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700">
+                <div className="max-h-[550px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700">
                   <FormattedAiContent content={currentNote.content} />
                 </div>
 
                 <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400">
-                  <span>文字数: {currentNote.content.length.toLocaleString()}文字</span>
+                  <span>文字数: {currentNote.content.length.toLocaleString()}文字 ｜ 全員に共有中</span>
                   <button
                     onClick={() => setExpandedId(null)}
-                    className="text-cyan-400 hover:text-cyan-300 underline font-medium"
+                    className="text-cyan-400 hover:text-cyan-300 underline font-semibold"
                   >
                     ↑ 折りたたむ
                   </button>
@@ -479,7 +507,7 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
         </div>
       )}
 
-      {/* 📝 貼り付け・編集モーダル */}
+      {/* 📝 貼り付け・共有モーダル */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-2xl rounded-2xl bg-[#0f172a] border border-cyan-500/40 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -491,10 +519,11 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white">
-                    {editingNoteId ? 'AI見解メモの編集' : `${stockName} のAI見解・調査結果を貼り付け`}
+                    {stockName} のAI見解・調査結果を貼り付け
                   </h3>
-                  <p className="text-[11px] text-gray-400">
-                    端末のGeminiなどで調べた文章を貼り付けて保存できます
+                  <p className="text-[11px] text-emerald-300 flex items-center gap-1 font-semibold">
+                    <Globe className="w-3 h-3" />
+                    保存すると入力年月日（本日: {formatDateJP(Date.now())}）つきで全投資家に共有されます
                   </p>
                 </div>
               </div>
@@ -522,7 +551,7 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                         type="button"
                         onClick={() => {
                           setSelectedAi(ai.id);
-                          if (!editingNoteId && (!noteTitle || noteTitle.endsWith('の見解'))) {
+                          if (!noteTitle || noteTitle.endsWith('の見解')) {
                             setNoteTitle(`${ai.name}の見解`);
                           }
                         }}
@@ -540,18 +569,33 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                 </div>
               </div>
 
-              {/* タイトル入力 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-300">
-                  ボタンの表示名・見出し:
-                </label>
-                <input
-                  type="text"
-                  value={noteTitle}
-                  onChange={(e) => setNoteTitle(e.target.value)}
-                  placeholder="例: Geminiの見解, 決算深掘り, テクニカル分析"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white text-xs outline-none transition-all"
-                />
+              {/* タイトル入力 ＆ 投稿者名 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-xs font-bold text-gray-300">
+                    ボタンの表示名・見出し:
+                  </label>
+                  <input
+                    type="text"
+                    value={noteTitle}
+                    onChange={(e) => setNoteTitle(e.target.value)}
+                    placeholder="例: Geminiの見解, 決算深掘り, テクニカル分析"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white text-xs outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-300">
+                    投稿者名:
+                  </label>
+                  <input
+                    type="text"
+                    value={authorNameInput}
+                    onChange={(e) => setAuthorNameInput(e.target.value)}
+                    placeholder="マサ"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white text-xs outline-none transition-all"
+                  />
+                </div>
               </div>
 
               {/* クリップボード貼り付けボタン ＆ 本文エリア */}
@@ -581,11 +625,11 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
                   rows={9}
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
-                  placeholder="ここにGeminiやChatGPTで調べた回答の長い文章をペーストしてください..."
+                  placeholder="ここにGemini等で調べた回答の長い文章をペーストしてください..."
                   className="w-full p-3.5 rounded-xl bg-gray-950 border border-gray-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white text-xs leading-relaxed outline-none transition-all placeholder:text-gray-600 resize-y"
                 />
                 <div className="flex justify-between items-center text-[11px] text-gray-500">
-                  <span>改行や箇条書きもそのまま保持されます</span>
+                  <span>本日（{formatDateJP(Date.now())}）の日付で共有保存されます</span>
                   <span>文字数: {noteContent.length.toLocaleString()}文字</span>
                 </div>
               </div>
@@ -603,10 +647,20 @@ export const StockAiNotesSection: React.FC<Props> = ({ ticker, stockName }) => {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!noteContent.trim()}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg shadow-cyan-500/25 transition-all"
+                disabled={!noteContent.trim() || isSubmitting}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg shadow-cyan-500/25 transition-all"
               >
-                {editingNoteId ? '更新を保存する' : 'この見解を登録する'}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>共有保存中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>みんなに共有保存する</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

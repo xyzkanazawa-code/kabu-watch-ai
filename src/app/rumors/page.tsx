@@ -26,9 +26,10 @@ export default function RumorsPage() {
   const fetchLiveRumors = async (force: boolean = false) => {
     try {
       const userKey = getStoredApiKey() || '';
-      const url = force ? '/api/rumors?force=true' : '/api/rumors';
+      const url = force ? `/api/rumors?force=true&t=${Date.now()}` : '/api/rumors';
       const res = await fetch(url, {
         headers: userKey ? { 'x-gemini-key': userKey } : {},
+        cache: 'no-store',
       });
       if (res.ok) {
         const data = await res.json();
@@ -48,7 +49,19 @@ export default function RumorsPage() {
               uniqueMap.set(item.id, item);
             }
           });
-          setRumors(Array.from(uniqueMap.values()));
+          const newList = Array.from(uniqueMap.values());
+          setRumors(newList);
+
+          // 強制スキャン時は先頭の新着噂を展開し、検知完了をトースト表示
+          if (force) {
+            const count = data.scannedCount || (data.newlyScannedIds ? data.newlyScannedIds.length : 1);
+            if (data.newlyScannedIds && data.newlyScannedIds.length > 0) {
+              setExpandedRumorId(data.newlyScannedIds[0]);
+            } else if (newList.length > 0) {
+              setExpandedRumorId(newList[0].id);
+            }
+            showToast(`🔍 スキャン完了！新しい市場思惑・噂トピック（${count}件）を検知・追加しました！`);
+          }
         }
         if (data.updatedTime) {
           setLastUpdated(data.updatedTime);
@@ -56,6 +69,9 @@ export default function RumorsPage() {
       }
     } catch (err) {
       console.error('Fetch live rumors error:', err);
+      if (force) {
+        showToast('⚠️ スキャン通信で一時的なエラーが発生しました');
+      }
     }
   };
 
@@ -67,7 +83,6 @@ export default function RumorsPage() {
     setIsRefreshing(true);
     await fetchLiveRumors(true);
     setIsRefreshing(false);
-    showToast('🔄 最新の噂とSNSトピックを再スキャンしました！');
   };
 
   // 自由入力フォーム状態
@@ -600,17 +615,22 @@ export default function RumorsPage() {
               const verdictBadge = getRumorVerdictBadge(item.aiVerdict.verdict);
               const categoryBadge = getCategoryLabel(item.category);
               const isExpanded = expandedRumorId === item.id;
+              const isNewScanned = item.id.startsWith('scanned-') || item.id.startsWith('dynamic-');
 
               return (
                 <div
                   key={item.id}
-                  className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 sm:p-6 transition-all shadow-lg"
+                  className={`rounded-2xl p-5 sm:p-6 transition-all shadow-lg border ${
+                    isNewScanned
+                      ? 'bg-gradient-to-br from-slate-900 via-[#191427] to-slate-900 border-rose-500/50 shadow-rose-900/10'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                  }`}
                 >
                   {/* ヘッダー情報（銘柄＋バッジ） */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
                     <div className="flex items-center gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Link 
                             href={`/stocks/${item.ticker}`}
                             className="text-lg sm:text-xl font-bold text-white hover:text-indigo-400 transition-colors flex items-center gap-1.5"
@@ -621,6 +641,12 @@ export default function RumorsPage() {
                           <span className="text-xs text-slate-400 px-2 py-0.5 rounded bg-slate-800 border border-slate-700">
                             {item.market} / {item.sector}
                           </span>
+                          {isNewScanned && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-extrabold flex items-center gap-1 animate-pulse">
+                              <Sparkles className="w-3 h-3 text-rose-400" />
+                              最新スキャン検知
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

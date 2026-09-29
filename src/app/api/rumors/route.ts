@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { INITIAL_RUMORS } from '@/lib/rumorData';
+import { INITIAL_RUMORS, EXTRA_RUMOR_POOL } from '@/lib/rumorData';
 import { RumorItem } from '@/types/rumor';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { scrapeCategoryRankings } from '@/lib/marketRankingFetcher';
@@ -14,6 +14,9 @@ let cachedRumors: RumorItem[] | null = null;
 let lastRumorsFetch = 0;
 const RUMORS_CACHE_TTL = 30 * 60 * 1000;
 
+// スキャン時に順次ローテーションするためのインデックス
+let poolScanIndex = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -23,13 +26,14 @@ export async function GET(request: NextRequest) {
     const todayStr = `${now.getFullYear()}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}`;
     const todayTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
-    // キャッシュが有効な場合はそのまま返却
+    // キャッシュが有効な場合はそのまま返却 (force時は強制再スキャン)
     if (!forceRefresh && cachedRumors && Date.now() - lastRumorsFetch < RUMORS_CACHE_TTL) {
       return NextResponse.json({
         cached: true,
         updatedDate: todayStr,
         updatedTime: todayTimeStr,
         rumors: cachedRumors,
+        scannedCount: 0,
       });
     }
 
@@ -106,16 +110,16 @@ ${targetsInfo}
         const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(cleanJson);
 
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           dynamicRumors = parsed.map((item, idx) => {
             const stock = hotStocks.find((s) => s.ticker === item.ticker) || hotStocks[0];
             return {
               ...item,
-              id: `dynamic-${Date.now()}-${idx}`,
+              id: `scanned-${Date.now()}-${idx}`,
               price: stock ? stock.price : 1000,
               change: stock ? Math.round((stock.price * stock.changePercent) / 100) : 50,
               changePercent: stock ? stock.changePercent : 5.0,
-              detectedDate: todayStr,
+              detectedDate: `${todayStr} ${todayTimeStr}`,
             };
           });
         }
@@ -124,9 +128,23 @@ ${targetsInfo}
       }
     }
 
-    // 3. 基礎噂データの日付を最新の本日・直近に更新してマージ
+    // 3. Geminiの生成がない場合、EXTRA_RUMOR_POOL から未掲載の思惑噂をスキャン結果として確実に発掘
+    if (dynamicRumors.length === 0 && EXTRA_RUMOR_POOL.length > 0) {
+      // スキャンごとにローテーションして2件発掘
+      const pick1 = EXTRA_RUMOR_POOL[poolScanIndex % EXTRA_RUMOR_POOL.length];
+      const pick2 = EXTRA_RUMOR_POOL[(poolScanIndex + 1) % EXTRA_RUMOR_POOL.length];
+      poolScanIndex = (poolScanIndex + 2) % EXTRA_RUMOR_POOL.length;
+
+      const picks = [pick1, pick2].filter(Boolean);
+      dynamicRumors = picks.map((p, idx) => ({
+        ...p,
+        id: `scanned-${p.ticker}-${Date.now()}-${idx}`,
+        detectedDate: `${todayStr} ${todayTimeStr}`,
+      }));
+    }
+
+    // 4. 基礎噂データの日付を最新の本日・直近に更新
     const updatedInitialRumors = INITIAL_RUMORS.map((r, i) => {
-      // 鮮度を保つため直近の日付にアジャスト
       const daysAgo = i === 0 ? 0 : i === 1 ? 1 : i === 2 ? 1 : 2;
       const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
       const dateStr = `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
@@ -136,7 +154,7 @@ ${targetsInfo}
       };
     });
 
-    // 最新の動的生成噂を先頭に、基礎噂をその後に結合
+    // 最新の動的生成・スキャン検知噂を先頭に、基礎噂をその後に結合
     const allRumors = [...dynamicRumors, ...updatedInitialRumors];
 
     cachedRumors = allRumors;
@@ -146,7 +164,9 @@ ${targetsInfo}
       cached: false,
       updatedDate: todayStr,
       updatedTime: todayTimeStr,
+      scannedCount: dynamicRumors.length,
       rumors: allRumors,
+      newlyScannedIds: dynamicRumors.map((r) => r.id),
     });
   } catch (err: any) {
     console.error('Error in /api/rumors:', err);

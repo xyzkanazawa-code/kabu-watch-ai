@@ -286,3 +286,200 @@ export function getCategoryLabel(category: RumorItem['category']) {
       return { label: '📢 SNS急騰煽り・仕手化', color: 'text-rose-400 border-rose-500/30 bg-rose-500/10' };
   }
 }
+
+// 🔍 スキャン時に動的発掘・ローテーションされるリアルな市場思惑噂プール
+export const EXTRA_RUMOR_POOL: Omit<RumorItem, 'id' | 'detectedDate'>[] = [
+  {
+    ticker: '6920',
+    stockName: 'レーザーテック',
+    market: 'プライム',
+    sector: '電気機器',
+    price: 24350,
+    change: 850,
+    changePercent: 3.62,
+    title: '米大手半導体ファウンドリより「次世代高NA EUV検査装置」の大型追加受注が内定との海外観測',
+    category: 'new_product',
+    buzzLevel: '🔥 過熱・大バズ',
+    sourceMedia: '台湾セミコンダクター専門紙 ＆ 海外アナリスト速報',
+    rumorSummary: '次世代2nmおよび1.4nm微細化プロセス向けに、レーザーテックのACTISシリーズ次世代機の独占採用がサプライチェーン関係者の証言として報道。市場で買い戻しが急加速。',
+    whyBuzzing: {
+      origin: '台湾テック系メディアの業界コラムにて、大手ファウンドリの設備投資計画における検査装置サプライヤー選定状況がリーク。',
+      spreadPath: '海外ヘッジファンド筋から東京市場の半導体担当アナリストへ共有され、後場寄り付き直後に大口買いが流入。',
+      marketReaction: '一時4%超の急反発となり、空売り筋の踏み上げを誘発。'
+    },
+    aiVerdict: {
+      verdict: 'highly_credible',
+      credibilityScore: 78,
+      fakeRiskScore: 22,
+      headline: '【信憑性高】微細化技術での独占シェアは盤石。次世代機リプレイス需要の時期としても整合的。',
+      factCheckPoints: {
+        officialStatus: '会社側からの正式開示は現時点でなし（通常は四半期決算の受注残高で反映）。',
+        sourceReliability: '報じたメディアはTSMCサプライチェーンの取材力に定評があり、過去の的中率は高水準。',
+        technicalFeasibility: '競合KLAが追いつくにはなお数年の技術ギャップがあり、独占受注継続の確度は高い。'
+      },
+      aiWarning: '高バリュエーション銘柄のため、海外金利動向や地政学リスクによる乱高下には常に警戒が必要。',
+      recommendedAction: 'catalyst_watch'
+    }
+  },
+  {
+    ticker: '3778',
+    stockName: 'さくらインターネット',
+    market: 'プライム',
+    sector: '情報・通信業',
+    price: 4320,
+    change: 285,
+    changePercent: 7.06,
+    title: '経産省「AIクラウド補助金」の第3期追加公募で数千億円規模の採択確定かとするSNS観測',
+    category: 'partnership',
+    buzzLevel: '🔥 過熱・大バズ',
+    sourceMedia: 'X（旧Twitter）政策ウォッチャー ＆ 官報分析アカウント',
+    rumorSummary: '政府のAI開発基盤強化に伴う追加支援予算において、さくらインターネットの石狩データセンター拡張計画が最有力候補として内定したとの噂が拡散。',
+    whyBuzzing: {
+      origin: '省庁の概算要求資料およびAI戦略会議の議事録要旨を分析したアカウントが「さくらに巨額追加補助の公算大」とポスト。',
+      spreadPath: '投資系インフルエンサーが「GPUサーバー調達枠の拡大必至」と拡散し、個人投資家の資金が集中。',
+      marketReaction: '出来高急増とともにストップ高気配に接近。'
+    },
+    aiVerdict: {
+      verdict: 'caution_speculative',
+      credibilityScore: 62,
+      fakeRiskScore: 38,
+      headline: '【要検証・思惑先行】政府の国産AI支援方針は事実だが、具体額や単独採択の確証は未発表。',
+      factCheckPoints: {
+        officialStatus: '経産省および会社側からの正式な採択発表はまだ出ていない。',
+        sourceReliability: '官公庁公開資料の解釈に基づいた分析であり根拠はあるが、市場の期待先行の側面が強い。',
+        technicalFeasibility: '既にNVIDIA最新GPU（H100/B200）の調達実績があり、受け入れ能力自体は証明済み。'
+      },
+      aiWarning: '正式発表時に「織り込み済み」で事実売りが出る典型パターンのため、高値飛びつき買いには注意。',
+      recommendedAction: 'wait_official'
+    }
+  },
+  {
+    ticker: '9468',
+    stockName: 'KADOKAWA',
+    market: 'プライム',
+    sector: '情報・通信業',
+    price: 3650,
+    change: 190,
+    changePercent: 5.49,
+    title: 'ソニーグループによる友好的TOB（完全子会社化）の最終契約が週明けにも合意との観測',
+    category: 'ma_takeover',
+    buzzLevel: '🔥 過熱・大バズ',
+    sourceMedia: '外資系金融メディア ＆ 国内M&Aアドバイザー筋',
+    rumorSummary: 'アニメ・ゲームIPの世界的展開を狙うソニーグループが、フロム・ソフトウェアの親会社であるKADOKAWAに対してプレミアム付きTOBを実施する方向で大詰めを迎えているとの観測報道。',
+    whyBuzzing: {
+      origin: '海外ニュースサイトが「ソニーとKADOKAWAの買収交渉が進展」と報道。',
+      spreadPath: '国内メディアが後追いで関係者の話として伝え、アニメ・コンテンツ投資クラスタで大熱狂。',
+      marketReaction: '買い気配を切り上げ、前日比+5%超の上昇。'
+    },
+    aiVerdict: {
+      verdict: 'highly_credible',
+      credibilityScore: 84,
+      fakeRiskScore: 16,
+      headline: '【信憑性極めて高】両社とも「協議の事実は認める」スタンス。資本提携から買収への進展は論理的。',
+      factCheckPoints: {
+        officialStatus: '両社は過去「買収の検討を行っていることは事実だが決定したものはない」と公式コメントを発表済み。',
+        sourceReliability: '主要金融紙複数社が追認取材を行っており、情報の確度は極めて高い水準。',
+        technicalFeasibility: '独占禁止法上の審査ハードルも比較的低く、実現可能性は高い。'
+      },
+      aiWarning: 'TOB価格のプレミアム水準（現在の市場価格との乖離）次第ではボラティリティが激しくなる点に留意。',
+      recommendedAction: 'catalyst_watch'
+    }
+  },
+  {
+    ticker: '5595',
+    stockName: 'QPS研究所',
+    market: 'グロース',
+    sector: '精密機器',
+    price: 1780,
+    change: 145,
+    changePercent: 8.87,
+    title: '防衛省SAR衛星コンステレーション計画で「数十機規模の単独一括受注」との思惑が拡散',
+    category: 'partnership',
+    buzzLevel: '🔥 過熱・大バズ',
+    sourceMedia: 'X（旧Twitter）宇宙・防衛銘柄クラスタ ＆ 専門誌',
+    rumorSummary: '防衛省が宇宙領域の監視・早期警戒体制強化のために配備を進める小型SAR衛星網について、QPS研究所が量産体制確立を評価され主契約社に内定したとの憶測が急浮上。',
+    whyBuzzing: {
+      origin: '防衛省の調達予定リストに「即応型小型衛星網の整備」が巨額計上されたことが判明。',
+      spreadPath: '宇宙ビジネス専門家がYouTubeやXで「国内で唯一量産可能なのはQPS」と解説し話題に。',
+      marketReaction: '急騰銘柄ランキング上位に急浮上し、グロース市場の資金を牽引。'
+    },
+    aiVerdict: {
+      verdict: 'caution_speculative',
+      credibilityScore: 68,
+      fakeRiskScore: 32,
+      headline: '【要検証・有力候補】技術力と実績は国内随一だが、競合他社との共同受注の可能性も残る。',
+      factCheckPoints: {
+        officialStatus: '過去の防衛省向け試作実証機の受注実績はあるが、本量産機の一括受注開示は未発表。',
+        sourceReliability: '国策予算資料に基づく根拠のある推測だが、配分比率の詳細は未知数。',
+        technicalFeasibility: '自社工場での月産体制整備が進んでおり、生産キャパシティ上の実現可能性は十分。'
+      },
+      aiWarning: '宇宙株はロケット打ち上げスケジュール遅延等の不確実性も伴うため、資金管理を厳格に。',
+      recommendedAction: 'virtual_try'
+    }
+  },
+  {
+    ticker: '6146',
+    stockName: 'ディスコ',
+    market: 'プライム',
+    sector: '機械',
+    price: 41200,
+    change: 1350,
+    changePercent: 3.39,
+    title: '「次世代HBM4用超薄型グラインダ・ダイサの供給シェア100%確定」とのサプライチェーン報告',
+    category: 'new_product',
+    buzzLevel: '⚡ 急上昇',
+    sourceMedia: '韓国半導体サプライチェーンレポート ＆ 日系証券リサーチ',
+    rumorSummary: '韓国SKハイニックスおよびサムスン電子が開発中の第6世代広帯域メモリ「HBM4」において、積層ダイの超薄型化を可能にするディスコの特許研削技術が独占採用されたとの観測。',
+    whyBuzzing: {
+      origin: '韓国の半導体学会でのサプライヤー展示発表において、同社ブースでの超薄型ウェーハ展示が海外機関投資家の注目を集めた。',
+      spreadPath: '半導体専門証券アナリストが「ディスコの圧倒的参入障壁」と投資判断を引き上げ。',
+      marketReaction: '半導体製造装置セクターが連れ高となり、日経平均を押し上げ。'
+    },
+    aiVerdict: {
+      verdict: 'highly_credible',
+      credibilityScore: 88,
+      fakeRiskScore: 12,
+      headline: '【信憑性極めて高】HBMの薄型積層化においてディスコの技術優位は世界的にも圧倒的。',
+      factCheckPoints: {
+        officialStatus: '顧客との守秘義務上、個別のHBM世代ごとの公式発表はされないのが通常。',
+        sourceReliability: 'メモリメーカーの部材発注計画と一致しており、業界関係者の裏付けは堅固。',
+        technicalFeasibility: '既存のHBM3Eでもシェアほぼ独占しており、次世代での継続は極めて自然。'
+      },
+      aiWarning: 'すでに市場評価が高く株価も値がさ株のため、相場全体の調整局面では値幅を伴う下落に注意。',
+      recommendedAction: 'catalyst_watch'
+    }
+  },
+  {
+    ticker: '5803',
+    stockName: 'フジクラ',
+    market: 'プライム',
+    sector: '非鉄金属',
+    price: 5200,
+    change: 240,
+    changePercent: 4.84,
+    title: '北米ハイパースケーラー各社が「超多心SWR光ケーブル」を2027年まで全量予約との噂',
+    category: 'earnings_leak',
+    buzzLevel: '🔥 過熱・大バズ',
+    sourceMedia: '米通信インフラ専門メディア ＆ X（旧Twitter）電線株クラスタ',
+    rumorSummary: '生成AIデータセンター間の超大容量通信需要が爆発しており、配線スペースを劇的に削減できるフジクラの独自光ケーブルが、米巨大クラウド大手3社から長期一括購入の打診を受け予約満杯状態との噂。',
+    whyBuzzing: {
+      origin: '米国通信見本市（OFC）での同社ブースに米テック大手幹部が連日殺到したとのレポート。',
+      spreadPath: 'インフラ投資家界隈で「電線株はAIバブルの隠れた本命」と話題化し、モメンタム買いが殺到。',
+      marketReaction: '年初来高値を更新し、連日出来高ランキング上位をキープ。'
+    },
+    aiVerdict: {
+      verdict: 'highly_credible',
+      credibilityScore: 82,
+      fakeRiskScore: 18,
+      headline: '【信憑性高】四半期決算ごとの上方修正ラッシュが裏付ける通り、データセンター需要は本物。',
+      factCheckPoints: {
+        officialStatus: '会社側は受注残高の好調と工場増工を既に決算短信等で公表済み。',
+        sourceReliability: '北米データセンター建設ラッシュの実需データと完全に合致。',
+        technicalFeasibility: 'SWR（Spider Web Ribbon）特許技術により他社が同等密度を量産するのは困難。'
+      },
+      aiWarning: '株価が短期間で数倍に急騰しているため、業績上方修正の数字が少しでも市場予想を下回った際の一時的急落リスクには警戒。',
+      recommendedAction: 'catalyst_watch'
+    }
+  }
+];
+

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { 
   Flame, AlertTriangle, ShieldCheck, HelpCircle, CheckCircle2, 
   TrendingUp, TrendingDown, Search, Filter, Sparkles, ExternalLink, 
-  Share2, ArrowRight, ShieldAlert, Cpu, Eye, BookOpen, Send, RefreshCw, Bookmark
+  Share2, ArrowRight, ShieldAlert, Cpu, Eye, BookOpen, Send, RefreshCw, Bookmark,
+  ChevronDown, ChevronUp, Layers
 } from 'lucide-react';
 import { INITIAL_RUMORS, getRumorVerdictBadge, getCategoryLabel } from '@/lib/rumorData';
 import { RumorItem, RumorCategory, RumorVerdict, RumorAnalyzeResponse } from '@/types/rumor';
@@ -13,14 +14,95 @@ import { BuyModal } from '@/components/BuyModal';
 import { addToWatchlist } from '@/lib/storage';
 import { getStoredApiKey } from '@/lib/apiKeyStorage';
 
+// 🎨 真偽判定ごとの明確な色分けスタイル定義
+const VERDICT_THEMES: Record<RumorItem['aiVerdict']['verdict'], {
+  name: string;
+  badgeBg: string;
+  badgeText: string;
+  cardBorder: string;
+  cardBorderOpen: string;
+  cardBg: string;
+  cardBgOpen: string;
+  accentBar: string;
+  glow: string;
+  headerHover: string;
+}> = {
+  fake_warning: {
+    name: '🚨 ガセ・煽り警戒',
+    badgeText: 'text-rose-400',
+    badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/50',
+    cardBorder: 'border-rose-500/35 hover:border-rose-500/70',
+    cardBorderOpen: 'border-rose-500 shadow-xl shadow-rose-950/40 ring-1 ring-rose-500/30',
+    cardBg: 'bg-gradient-to-r from-rose-950/30 via-[#13101c] to-slate-900',
+    cardBgOpen: 'bg-gradient-to-b from-rose-950/40 via-slate-900 to-[#0e1322]',
+    accentBar: 'bg-rose-500',
+    glow: 'shadow-rose-900/20',
+    headerHover: 'hover:bg-rose-500/5',
+  },
+  caution_speculative: {
+    name: '🔍 要検証・思惑先行',
+    badgeText: 'text-amber-400',
+    badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+    cardBorder: 'border-amber-500/35 hover:border-amber-500/70',
+    cardBorderOpen: 'border-amber-500 shadow-xl shadow-amber-950/40 ring-1 ring-amber-500/30',
+    cardBg: 'bg-gradient-to-r from-amber-950/25 via-[#161311] to-slate-900',
+    cardBgOpen: 'bg-gradient-to-b from-amber-950/35 via-slate-900 to-[#0e1322]',
+    accentBar: 'bg-amber-500',
+    glow: 'shadow-amber-900/20',
+    headerHover: 'hover:bg-amber-500/5',
+  },
+  highly_credible: {
+    name: '✅ 信憑性高・確証あり',
+    badgeText: 'text-emerald-400',
+    badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+    cardBorder: 'border-emerald-500/35 hover:border-emerald-500/70',
+    cardBorderOpen: 'border-emerald-500 shadow-xl shadow-emerald-950/40 ring-1 ring-emerald-500/30',
+    cardBg: 'bg-gradient-to-r from-emerald-950/30 via-[#0e171b] to-slate-900',
+    cardBgOpen: 'bg-gradient-to-b from-emerald-950/35 via-slate-900 to-[#0e1322]',
+    accentBar: 'bg-emerald-500',
+    glow: 'shadow-emerald-900/20',
+    headerHover: 'hover:bg-emerald-500/5',
+  },
+  officially_denied: {
+    name: '📢 会社側が公式否定済',
+    badgeText: 'text-purple-400',
+    badgeBg: 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+    cardBorder: 'border-purple-500/35 hover:border-purple-500/70',
+    cardBorderOpen: 'border-purple-500 shadow-xl shadow-purple-950/40 ring-1 ring-purple-500/30',
+    cardBg: 'bg-gradient-to-r from-purple-950/30 via-[#151122] to-slate-900',
+    cardBgOpen: 'bg-gradient-to-b from-purple-950/35 via-slate-900 to-[#0e1322]',
+    accentBar: 'bg-purple-500',
+    glow: 'shadow-purple-900/20',
+    headerHover: 'hover:bg-purple-500/5',
+  },
+};
+
 export default function RumorsPage() {
   const [rumors, setRumors] = useState<RumorItem[]>(INITIAL_RUMORS);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedVerdict, setSelectedVerdict] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'buzz' | 'fakeRisk' | 'credibility'>('buzz');
-  const [expandedRumorId, setExpandedRumorId] = useState<string | null>('rumor-1');
+  // 折りたたみ状態をIDごとのマップで管理（初期は先頭の1件のみ展開）
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({ 'rumor-1': true });
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const toggleRumor = (id: string) => {
+    setExpandedIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const expandAll = () => {
+    const all: Record<string, boolean> = {};
+    rumors.forEach(r => { all[r.id] = true; });
+    setExpandedIds(all);
+  };
+
+  const collapseAll = () => {
+    setExpandedIds({});
+  };
 
   // 噂データの自動フェッチ＆ローカルストレージ保存分のマージ
   const fetchLiveRumors = async (force: boolean = false) => {
@@ -56,9 +138,13 @@ export default function RumorsPage() {
           if (force) {
             const count = data.scannedCount || (data.newlyScannedIds ? data.newlyScannedIds.length : 1);
             if (data.newlyScannedIds && data.newlyScannedIds.length > 0) {
-              setExpandedRumorId(data.newlyScannedIds[0]);
+              setExpandedIds(prev => {
+                const next = { ...prev };
+                data.newlyScannedIds.forEach((id: string) => { next[id] = true; });
+                return next;
+              });
             } else if (newList.length > 0) {
-              setExpandedRumorId(newList[0].id);
+              setExpandedIds(prev => ({ ...prev, [newList[0].id]: true }));
             }
             showToast(`🔍 スキャン完了！新しい市場思惑・噂トピック（${count}件）を検知・追加しました！`);
           }
@@ -528,32 +614,52 @@ export default function RumorsPage() {
               </p>
             </div>
 
-            {/* ソートタブ */}
-            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-              <button
-                onClick={() => setSortBy('buzz')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                  sortBy === 'buzz' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                🔥 バズ度順
-              </button>
-              <button
-                onClick={() => setSortBy('fakeRisk')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                  sortBy === 'fakeRisk' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                🚨 ガセ危険度順
-              </button>
-              <button
-                onClick={() => setSortBy('credibility')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                  sortBy === 'credibility' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                ✅ 信憑性順
-              </button>
+            {/* ソートタブ ＆ 一括開閉ボタン */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+                <button
+                  onClick={() => setSortBy('buzz')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    sortBy === 'buzz' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🔥 バズ度順
+                </button>
+                <button
+                  onClick={() => setSortBy('fakeRisk')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    sortBy === 'fakeRisk' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🚨 ガセ危険度順
+                </button>
+                <button
+                  onClick={() => setSortBy('credibility')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    sortBy === 'credibility' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ✅ 信憑性順
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+                <button
+                  onClick={expandAll}
+                  className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors font-semibold flex items-center gap-1"
+                  title="すべての噂カードを展開"
+                >
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>全開</span>
+                </button>
+                <button
+                  onClick={collapseAll}
+                  className="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-semibold"
+                  title="すべての噂カードを折りたたむ"
+                >
+                  全閉
+                </button>
+              </div>
             </div>
           </div>
 
@@ -612,162 +718,190 @@ export default function RumorsPage() {
             </div>
           ) : (
             filteredRumors.map((item) => {
-              const verdictBadge = getRumorVerdictBadge(item.aiVerdict.verdict);
+              const theme = VERDICT_THEMES[item.aiVerdict.verdict];
               const categoryBadge = getCategoryLabel(item.category);
-              const isExpanded = expandedRumorId === item.id;
+              const isOpen = !!expandedIds[item.id];
               const isNewScanned = item.id.startsWith('scanned-') || item.id.startsWith('dynamic-');
 
               return (
                 <div
                   key={item.id}
-                  className={`rounded-2xl p-5 sm:p-6 transition-all shadow-lg border ${
-                    isNewScanned
-                      ? 'bg-gradient-to-br from-slate-900 via-[#191427] to-slate-900 border-rose-500/50 shadow-rose-900/10'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                  className={`rounded-2xl transition-all duration-200 border relative overflow-hidden ${
+                    isOpen 
+                      ? `${theme.cardBorderOpen} ${theme.cardBgOpen}` 
+                      : `${theme.cardBorder} ${theme.cardBg}`
                   }`}
                 >
-                  {/* ヘッダー情報（銘柄＋バッジ） */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link 
-                            href={`/stocks/${item.ticker}`}
-                            className="text-lg sm:text-xl font-bold text-white hover:text-indigo-400 transition-colors flex items-center gap-1.5"
-                          >
-                            {item.stockName}
-                            <span className="text-sm font-semibold text-slate-400 font-mono">({item.ticker})</span>
-                          </Link>
-                          <span className="text-xs text-slate-400 px-2 py-0.5 rounded bg-slate-800 border border-slate-700">
-                            {item.market} / {item.sector}
+                  {/* 左端のテーマカラーアクセントライン */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${theme.accentBar}`} />
+
+                  {/* ヘッダー：タップして開閉できるクリッカブルバー */}
+                  <div 
+                    onClick={() => toggleRumor(item.id)}
+                    className={`p-4 sm:p-5 cursor-pointer select-none pl-5 sm:pl-6 transition-colors ${theme.headerHover}`}
+                  >
+                    {/* 1段目: 銘柄名・コード・色分け判定バッジ・株価・Chevron開閉アイコン */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link 
+                          href={`/stocks/${item.ticker}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-base sm:text-lg font-bold text-white hover:text-cyan-300 transition-colors flex items-center gap-1.5"
+                          title="銘柄詳細ページを開く"
+                        >
+                          <span>{item.stockName}</span>
+                          <span className="text-xs font-bold text-slate-400 font-mono">({item.ticker})</span>
+                        </Link>
+                        <span className="text-[11px] text-slate-400 px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700/80">
+                          {item.market} / {item.sector}
+                        </span>
+
+                        {/* 色分けステータスバッジ */}
+                        <span className={`px-2.5 py-0.5 rounded-full border text-xs font-black flex items-center gap-1 shadow-sm ${theme.badgeBg}`}>
+                          {theme.name}
+                        </span>
+
+                        {isNewScanned && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/50 font-extrabold flex items-center gap-1 animate-pulse">
+                            <Sparkles className="w-3 h-3 text-rose-400" />
+                            最新スキャン検知
                           </span>
-                          {isNewScanned && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-extrabold flex items-center gap-1 animate-pulse">
-                              <Sparkles className="w-3 h-3 text-rose-400" />
-                              最新スキャン検知
-                            </span>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="text-right mr-2">
-                        <div className="text-sm sm:text-base font-bold text-white font-mono">
-                          ¥{item.price.toLocaleString()}
+                      {/* 株価 & 開閉矢印アイコン */}
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-sm sm:text-base font-bold text-white font-mono">
+                            ¥{item.price.toLocaleString()}
+                          </div>
+                          <div className={`text-xs font-bold flex items-center justify-end gap-0.5 ${
+                            item.change >= 0 ? 'text-rose-400' : 'text-emerald-400'
+                          }`}>
+                            {item.change >= 0 ? '+' : ''}{item.change} ({item.change >= 0 ? '+' : ''}{item.changePercent}%)
+                          </div>
                         </div>
-                        <div className={`text-xs font-bold flex items-center justify-end gap-0.5 ${
-                          item.change >= 0 ? 'text-rose-400' : 'text-emerald-400'
+
+                        {/* 開閉状態トグルボタン */}
+                        <div className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${
+                          isOpen 
+                            ? 'bg-slate-800 border-slate-600 text-white' 
+                            : 'bg-slate-900/90 border-slate-700 text-slate-400 hover:text-white'
                         }`}>
-                          {item.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {item.change >= 0 ? `+${item.change}` : item.change} ({item.changePercent >= 0 ? `+${item.changePercent}%` : `${item.changePercent}%`})
+                          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2段目: カテゴリバッジ ＆ 噂タイトル */}
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className={`text-[11px] px-2.5 py-0.5 rounded-full border font-semibold shrink-0 ${categoryBadge.color}`}>
+                          {categoryBadge.label}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold border border-slate-700 shrink-0 hidden sm:inline">
+                          {item.buzzLevel}
+                        </span>
+                        <h3 className="text-sm sm:text-base font-bold text-white truncate leading-snug">
+                          {item.title}
+                        </h3>
+                      </div>
+
+                      <span className={`text-xs font-bold shrink-0 hidden md:inline-flex items-center gap-1 ${
+                        isOpen ? 'text-slate-400' : theme.badgeText
+                      }`}>
+                        {isOpen ? '▲ タップして閉じる' : '▼ タップしてAI分析・真偽判定を開く'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* タップして開いた時のみ表示されるフル分析コンテンツ */}
+                  {isOpen && (
+                    <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-3 border-t border-slate-800/80 animate-fadeIn space-y-4">
+                      {/* 噂の具体的な内容 */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/90 text-xs sm:text-sm text-slate-200 leading-relaxed">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-rose-400" />
+                            囁かれている噂の内容サマリー
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            情報源: {item.sourceMedia}
+                          </span>
+                        </div>
+                        <p className="text-slate-300">{item.rumorSummary}</p>
+                      </div>
+
+                      {/* AI信憑性 vs ガセ危険度メーター */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400 flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                              信憑性スコア
+                            </span>
+                            <span className="font-extrabold text-emerald-400">{item.aiVerdict.credibilityScore}%</span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                            <div 
+                              className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                              style={{ width: `${item.aiVerdict.credibilityScore}%` }} 
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                              ガセ・煽り危険度
+                            </span>
+                            <span className="font-extrabold text-rose-400">{item.aiVerdict.fakeRiskScore}%</span>
+                          </div>
+                          <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                            <div 
+                              className="bg-rose-500 h-full rounded-full transition-all duration-500" 
+                              style={{ width: `${item.aiVerdict.fakeRiskScore}%` }} 
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      {/* ガセ判定ステータスバッジ */}
-                      <span className={`px-3 py-1 rounded-full border text-xs font-bold flex items-center gap-1.5 ${verdictBadge.bg}`}>
-                        {verdictBadge.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 噂のタイトル＆タグ */}
-                  <div className="mt-4">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${categoryBadge.color}`}>
-                        {categoryBadge.label}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold border border-slate-700">
-                        {item.buzzLevel}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        情報源: {item.sourceMedia}
-                      </span>
-                    </div>
-
-                    <h3 className="text-base sm:text-lg font-bold text-white leading-snug">
-                      {item.title}
-                    </h3>
-                    <p className="mt-2 text-sm text-slate-300 leading-relaxed">
-                      {item.rumorSummary}
-                    </p>
-                  </div>
-
-                  {/* AI信憑性 vs ガセ危険度メーター */}
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-400 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          信憑性スコア
-                        </span>
-                        <span className="font-bold text-emerald-400">{item.aiVerdict.credibilityScore}%</span>
+                      {/* AIのズバリ総括判定 */}
+                      <div className={`p-3.5 rounded-xl border text-xs sm:text-sm font-medium ${theme.badgeBg}`}>
+                        <span className="font-extrabold block mb-0.5">💡 AIアナリスト総括判定: </span>
+                        <span>{item.aiVerdict.headline}</span>
                       </div>
-                      <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
-                          style={{ width: `${item.aiVerdict.credibilityScore}%` }} 
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-400 flex items-center gap-1">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                          ガセ・煽り危険度
-                        </span>
-                        <span className="font-bold text-rose-400">{item.aiVerdict.fakeRiskScore}%</span>
-                      </div>
-                      <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-rose-500 h-full rounded-full transition-all duration-500" 
-                          style={{ width: `${item.aiVerdict.fakeRiskScore}%` }} 
-                        />
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* AIのズバリ総括 */}
-                  <div className="mt-3 p-3 bg-indigo-950/20 border border-indigo-500/30 rounded-xl text-xs sm:text-sm text-indigo-200">
-                    <span className="font-bold text-indigo-300">💡 AIアナリスト総括: </span>
-                    {item.aiVerdict.headline}
-                  </div>
-
-                  {/* 詳細アコーディオン */}
-                  {isExpanded && (
-                    <div className="mt-5 space-y-4 border-t border-slate-800/80 pt-4 animate-fadeIn">
-                      {/* なぜ噂になっているか */}
-                      <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/80">
+                      {/* なぜ噂になっているか（背景・発端） */}
+                      <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 space-y-2 text-xs text-slate-300">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                          <Eye className="w-4 h-4 text-cyan-400" /> なんで噂になっているか（背景・発端）
+                          <Eye className="w-4 h-4 text-cyan-400" /> なぜ噂になっているか（背景・発端・拡散経路）
                         </h4>
-                        <div className="space-y-2 text-xs text-slate-300">
-                          <div>
-                            <span className="text-slate-500 font-semibold">【発端】: </span>
-                            {item.whyBuzzing.origin}
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-semibold">【拡散経路】: </span>
-                            {item.whyBuzzing.spreadPath}
-                          </div>
-                          <div>
-                            <span className="text-slate-500 font-semibold">【市場の反応】: </span>
-                            {item.whyBuzzing.marketReaction}
-                          </div>
+                        <div>
+                          <span className="text-slate-500 font-semibold">【発端】: </span>
+                          {item.whyBuzzing.origin}
+                        </div>
+                        <div>
+                          <span className="text-slate-500 font-semibold">【拡散経路】: </span>
+                          {item.whyBuzzing.spreadPath}
+                        </div>
+                        <div>
+                          <span className="text-slate-500 font-semibold">【市場の初動反応】: </span>
+                          {item.whyBuzzing.marketReaction}
                         </div>
                       </div>
 
-                      {/* AIファクトチェック根拠 */}
+                      {/* AIファクトチェック3大根拠 */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="bg-slate-950/50 rounded-xl p-3.5 border border-slate-800/80 text-xs">
-                          <span className="font-bold text-slate-400 block mb-1">🏢 公式IR・開示状況</span>
+                        <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 text-xs">
+                          <span className="font-bold text-slate-400 block mb-1">🏢 公式IR・適時開示状況</span>
                           <p className="text-slate-300 leading-relaxed">{item.aiVerdict.factCheckPoints.officialStatus}</p>
                         </div>
-                        <div className="bg-slate-950/50 rounded-xl p-3.5 border border-slate-800/80 text-xs">
-                          <span className="font-bold text-slate-400 block mb-1">🔍 情報源の信頼度</span>
+                        <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 text-xs">
+                          <span className="font-bold text-slate-400 block mb-1">🔍 情報源の信頼度評価</span>
                           <p className="text-slate-300 leading-relaxed">{item.aiVerdict.factCheckPoints.sourceReliability}</p>
                         </div>
-                        <div className="bg-slate-950/50 rounded-xl p-3.5 border border-slate-800/80 text-xs">
+                        <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 text-xs">
                           <span className="font-bold text-slate-400 block mb-1">⚙️ 技術・実現可能性</span>
                           <p className="text-slate-300 leading-relaxed">{item.aiVerdict.factCheckPoints.technicalFeasibility}</p>
                         </div>
@@ -781,41 +915,42 @@ export default function RumorsPage() {
                           {item.aiVerdict.aiWarning}
                         </div>
                       </div>
+
+                      {/* フッターアクションバー */}
+                      <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70">
+                        <button
+                          onClick={() => toggleRumor(item.id)}
+                          className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                          <span>折りたたむ</span>
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleAddToWatch(item.ticker, item.stockName)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Bookmark className="w-3.5 h-3.5" /> ウォッチ追加
+                          </button>
+
+                          <button
+                            onClick={() => handleOpenBuy(item, 'simulation')}
+                            className="px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            🎮 仮想売買で試す
+                          </button>
+
+                          <Link
+                            href={`/stocks/${item.ticker}`}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5"
+                          >
+                            開示・チャート <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+                      </div>
                     </div>
                   )}
-
-                  {/* フッターアクションバー */}
-                  <div className="mt-4 pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/60">
-                    <button
-                      onClick={() => setExpandedRumorId(isExpanded ? null : item.id)}
-                      className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      {isExpanded ? '▲ 詳細背景を閉じる' : '▼ なぜ噂になっているか・ファクトチェック根拠を見る'}
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleAddToWatch(item.ticker, item.stockName)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Bookmark className="w-3.5 h-3.5" /> ウォッチ追加
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenBuy(item, 'simulation')}
-                        className="px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
-                      >
-                        🎮 仮想売買で試す
-                      </button>
-
-                      <Link
-                        href={`/stocks/${item.ticker}`}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5"
-                      >
-                        開示・チャート <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  </div>
                 </div>
               );
             })

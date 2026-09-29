@@ -6,6 +6,7 @@ const FAVORITES_KEY = 'kabu_watch_favorites';
 const FAVORITES_META_KEY = 'kabu_watch_favorites_meta';
 const READ_ITEMS_KEY = 'kabu_watch_read_items';
 const LAST_ACCESS_KEY = 'kabu_watch_last_access';
+const LOCAL_USER_KEY = 'kabu_watch_ai_local_user_v1';
 
 export interface FavoriteStockMeta {
   ticker: string;
@@ -16,12 +17,32 @@ export interface FavoriteStockMeta {
   updatedAt?: number;
 }
 
+/**
+ * ログイン中ユーザーかどうかのチェック
+ */
+export function isUserLoggedIn(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem(LOCAL_USER_KEY);
+    if (!raw) return false;
+    const user = JSON.parse(raw);
+    return !!user?.isLoggedIn;
+  } catch {
+    return false;
+  }
+}
+
 export function getFavorites(): string[] {
-  if (typeof window === 'undefined') return ['7203', '6920', '9984', '6758'];
+  if (typeof window === 'undefined') return [];
+  // 未ログイン（フリーユーザー）時はお気に入りを表示しない（セキュリティ＆会員特典保護）
+  if (!isUserLoggedIn()) {
+    return [];
+  }
+
   try {
     const data = localStorage.getItem(FAVORITES_KEY);
     if (!data) {
-      // 初期値: トヨタ、レーザーテック、ソフトバンクG、ソニー
+      // ログイン会員の初期デフォルト銘柄
       const defaults = ['7203', '6920', '9984', '6758'];
       localStorage.setItem(FAVORITES_KEY, JSON.stringify(defaults));
       return defaults;
@@ -79,6 +100,13 @@ export function addFavorite(
   ticker: string, 
   meta?: { name?: string; sector?: string; price?: number; changePercent?: number }
 ): string[] {
+  if (!isUserLoggedIn()) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+    }
+    return [];
+  }
+
   const current = getFavorites();
   
   // 会社名メタデータがあれば保存

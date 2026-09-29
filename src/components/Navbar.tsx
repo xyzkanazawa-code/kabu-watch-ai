@@ -219,6 +219,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, favoritesCount, ha
 
           {/* 下段: メニューナビゲーションバー（スマホでも横スクロール＆見やすく2段目配置） */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-0.5 no-scrollbar text-xs">
+            {/* 🏠 Home Link */}
+            <Link
+              href="/"
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold border shrink-0 transition-all ${
+                pathname === '/'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-500/20'
+                  : 'bg-gray-900/90 border-gray-800 text-gray-300 hover:border-gray-700'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              <span>ホーム</span>
+            </Link>
+
             {/* 🏆 Rankings Link */}
             <Link
               href="/rankings"

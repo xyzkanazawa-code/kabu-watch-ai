@@ -19,8 +19,9 @@ import { TimelineItem } from '@/types/stock';
 import { 
   Sparkles, TrendingUp, BellRing, Star, ArrowRight, ShieldCheck, Zap, 
   RefreshCw, Briefcase, Trophy, Calendar, Users, Flame, Bot, ExternalLink, 
-  KeyRound, MessageSquareText, ChevronUp 
+  KeyRound, MessageSquareText, ChevronUp, Lock, LogIn 
 } from 'lucide-react';
+import { useAuth } from '@/lib/useAuth';
 
 // 初回即時表示用プリセットタイムライン（0秒表示でロード待ちを完全解消）
 const INITIAL_TIMELINE: TimelineItem[] = [
@@ -118,8 +119,9 @@ const INITIAL_TIMELINE: TimelineItem[] = [
 ];
 
 export default function HomePage() {
+  const { user, isLoggedIn } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>(['7203', '6920', '9984', '6758']);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [watchlistStocks, setWatchlistStocks] = useState<FavoriteStockMeta[]>([]);
   // 初期データであらかじめレンダリング（白画面や無限ローディングを完全防止）
   const [timeline, setTimeline] = useState<TimelineItem[]>(INITIAL_TIMELINE);
@@ -136,10 +138,16 @@ export default function HomePage() {
   const [isGeminiMenuOpen, setIsGeminiMenuOpen] = useState(false);
 
   useEffect(() => {
+    // ログイン状態に応じたお気に入り取得（未ログインは空配列）
     const favs = getFavorites();
     setFavorites(favs);
-    loadWatchlistStocks(favs);
-    fetchHomeTimeline(favs);
+    if (isLoggedIn) {
+      loadWatchlistStocks(favs);
+      fetchHomeTimeline(favs);
+    } else {
+      setWatchlistStocks([]);
+      fetchHomeTimeline(['7203', '6920', '9984', '6758']);
+    }
 
     // 端末のGemini APIキー存在チェック
     const checkKey = () => {
@@ -150,7 +158,7 @@ export default function HomePage() {
     return () => {
       window.removeEventListener('kabu_watch_api_key_changed', checkKey);
     };
-  }, []);
+  }, [isLoggedIn]);
 
   const loadWatchlistStocks = async (favTickers: string[]) => {
     const metas = getAllFavoriteMetas();
@@ -380,10 +388,16 @@ export default function HomePage() {
 
                 {/* Geminiに直接株式相談するボタン（アプリ内AIチャット） */}
                 <button
-                  onClick={() => setChatState({ 
-                    title: '相場・注目銘柄 AI相談', 
-                    content: '今日の日経平均動向、個別株の材料、決算の見方など、気になることを自由にGeminiに質問できます。' 
-                  })}
+                  onClick={() => {
+                    if (!isLoggedIn) {
+                      window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+                      return;
+                    }
+                    setChatState({ 
+                      title: '相場・注目銘柄 AI相談', 
+                      content: '今日の日経平均動向、個別株の材料、決算の見方など、気になることを自由にGeminiに質問できます。' 
+                    });
+                  }}
                   className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-indigo-300 hover:text-white font-bold text-xs border border-indigo-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm text-center"
                 >
                   <MessageSquareText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -407,6 +421,38 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* 未ログイン時の会員登録案内バナー */}
+        {!isLoggedIn && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-cyan-950/40 to-blue-950/40 border border-emerald-500/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-cyan-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-white">株ウォッチAI 無料会員登録</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    登録30秒・完全無料
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 mt-0.5">
+                  ログインすると、全銘柄のAI解読・時系列ニュース・適時開示PDF分析・お気に入り監視・資産ポートフォリオが全て解放されます。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => window.dispatchEvent(new Event('kabu_watch_open_auth_modal'))}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>無料会員登録 / ログイン</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 🏆 市場急変動 ＆ 👥 コミュニティ ＆ 🔥 噂の株 ＆ 📅 週末厳選 */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
@@ -427,7 +473,7 @@ export default function HomePage() {
                   市場急変動ランキング
                 </h3>
                 <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">
-                  値上がり・S高をGemini要約
+                  値上がり・S高をGemini要約（フリー閲覧可）
                 </p>
               </div>
             </div>
@@ -517,53 +563,86 @@ export default function HomePage() {
               <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
               ウォッチリスト (専用AI情報センター)
             </h2>
-            <Link
-              href="/whats-new"
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
-            >
-              <BellRing className="w-3.5 h-3.5" /> 昨日からの変化を見る
-            </Link>
+            {isLoggedIn && (
+              <Link
+                href="/whats-new"
+                className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+              >
+                <BellRing className="w-3.5 h-3.5" /> 昨日からの変化を見る
+              </Link>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {watchlistStocks.map((stock) => {
-              const isUp = (stock.changePercent ?? 0) >= 0;
+          {!isLoggedIn ? (
+            <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-gray-900 via-[#0e1628] to-gray-900 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                  <Lock className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    お気に入り監視（無料会員限定）
+                  </h3>
+                  <p className="text-xs text-gray-300 mt-1">
+                    お気に入りに銘柄を登録すると、Geminiが適時開示・ニュース・業績推移を専用ダッシュボードで24時間自動監視します。
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => window.dispatchEvent(new Event('kabu_watch_open_auth_modal'))}
+                className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20 active:scale-95 transition-all shrink-0 cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>無料会員登録 / ログインして利用する</span>
+              </button>
+            </div>
+          ) : watchlistStocks.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-gray-900/60 border border-gray-800 text-center space-y-3">
+              <Star className="w-8 h-8 text-gray-500 mx-auto" />
+              <p className="text-sm text-gray-400">お気に入りに登録された銘柄はまだありません。</p>
+              <p className="text-xs text-gray-500">上の検索や市場ランキングから気になる銘柄の⭐を押して追加してください。</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {watchlistStocks.map((stock) => {
+                const isUp = (stock.changePercent ?? 0) >= 0;
 
-              return (
-                <Link
-                  key={stock.ticker}
-                  href={`/stocks/${stock.ticker}`}
-                  className="group p-5 rounded-2xl bg-[#111827] border border-gray-800 hover:border-cyan-500/50 hover:bg-gray-800/60 transition-all shadow-lg flex flex-col justify-between space-y-4"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                        {stock.ticker}
-                      </span>
-                      <h3 className="font-bold text-white text-base mt-1 group-hover:text-cyan-300 transition-colors">
-                        {stock.name}
-                      </h3>
-                      <span className="text-[10px] text-gray-400">{stock.sector || '東証上場銘柄'}</span>
+                return (
+                  <Link
+                    key={stock.ticker}
+                    href={`/stocks/${stock.ticker}`}
+                    className="group p-5 rounded-2xl bg-[#111827] border border-gray-800 hover:border-cyan-500/50 hover:bg-gray-800/60 transition-all shadow-lg flex flex-col justify-between space-y-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          {stock.ticker}
+                        </span>
+                        <h3 className="font-bold text-white text-base mt-1 group-hover:text-cyan-300 transition-colors">
+                          {stock.name}
+                        </h3>
+                        <span className="text-[10px] text-gray-400">{stock.sector || '東証上場銘柄'}</span>
+                      </div>
+
+                      <div className="text-right font-mono">
+                        <div className="text-lg font-extrabold text-white">
+                          ¥{(stock.price ?? 1000).toLocaleString()}
+                        </div>
+                        <div className={`text-xs font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {isUp ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="text-right font-mono">
-                      <div className="text-lg font-extrabold text-white">
-                        ¥{(stock.price ?? 1000).toLocaleString()}
-                      </div>
-                      <div className={`text-xs font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {isUp ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
-                      </div>
+                    <div className="pt-3 border-t border-gray-800/80 flex items-center justify-between text-xs font-semibold text-cyan-400 group-hover:translate-x-1 transition-transform">
+                      <span>専用AIダッシュボード</span>
+                      <ArrowRight className="w-4 h-4" />
                     </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-gray-800/80 flex items-center justify-between text-xs font-semibold text-cyan-400 group-hover:translate-x-1 transition-transform">
-                    <span>専用AIダッシュボード</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Featured Timeline Section */}
@@ -602,10 +681,34 @@ export default function HomePage() {
           <Timeline
             items={timeline}
             onOpenPdf={(item) => setPdfItem(item)}
-            onOpenChat={(title, content) => setChatState({ title, content })}
-            onOpenImpact={(title, item) => setImpactState({ title, item })}
-            onOpenPartner={(partner) => setPartnerState(partner)}
-            onOpenBuy={(ticker, name, price, news) => setBuyState({ ticker, stockName: name, currentPrice: price, newsTitle: news })}
+            onOpenChat={(title, content) => {
+              if (!isLoggedIn) {
+                window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+                return;
+              }
+              setChatState({ title, content });
+            }}
+            onOpenImpact={(title, item) => {
+              if (!isLoggedIn) {
+                window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+                return;
+              }
+              setImpactState({ title, item });
+            }}
+            onOpenPartner={(partner) => {
+              if (!isLoggedIn) {
+                window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+                return;
+              }
+              setPartnerState(partner);
+            }}
+            onOpenBuy={(ticker, name, price, news) => {
+              if (!isLoggedIn) {
+                window.dispatchEvent(new Event('kabu_watch_open_auth_modal'));
+                return;
+              }
+              setBuyState({ ticker, stockName: name, currentPrice: price, newsTitle: news });
+            }}
           />
         </section>
 

@@ -134,6 +134,36 @@ export function useAuth() {
     window.dispatchEvent(new Event('kabu_watch_auth_changed'));
   };
 
+const REGISTERED_USERS_DB_KEY = 'kabu_watch_users_registry_v1';
+
+function getRegisteredUsers(): UserProfile[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(REGISTERED_USERS_DB_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveRegisteredUser(userToSave: UserProfile) {
+  if (typeof window === 'undefined') return;
+  try {
+    const users = getRegisteredUsers();
+    const existingIndex = users.findIndex(
+      (u) => (u.email && u.email.toLowerCase() === userToSave.email.toLowerCase()) || (u.id === userToSave.id)
+    );
+    if (existingIndex >= 0) {
+      users[existingIndex] = { ...users[existingIndex], ...userToSave };
+    } else {
+      users.push(userToSave);
+    }
+    localStorage.setItem(REGISTERED_USERS_DB_KEY, JSON.stringify(users));
+  } catch (e) {
+    console.error('Failed to save to users registry:', e);
+  }
+}
+
   /**
    * Googleでワンタップログイン
    */
@@ -152,16 +182,22 @@ export function useAuth() {
       }
     }
 
-    // Googleアカウント模倣の即時ログイン
-    const defaultUser: UserProfile = {
-      id: `usr_${Date.now()}`,
-      email: 'investor.masa@gmail.com',
-      name: 'マサ（投資家）',
-      avatarUrl: AVATAR_PRESETS[0].url,
-      bio: '成長株と好業績バリュー株をAIで監視中。',
-      investorStyle: '現物・スイングトレード',
-      isLoggedIn: true,
-    };
+    // Googleアカウント模倣のログイン（過去に保存されていればそれを復元）
+    const existingUsers = getRegisteredUsers();
+    const found = existingUsers.find((u) => u.email === 'investor.masa@gmail.com');
+
+    const defaultUser: UserProfile = found
+      ? { ...found, isLoggedIn: true }
+      : {
+          id: `usr_${Date.now()}`,
+          email: 'investor.masa@gmail.com',
+          name: 'マサ（投資家）',
+          avatarUrl: AVATAR_PRESETS[0].url,
+          bio: '成長株と好業績バリュー株をAIで監視中。',
+          investorStyle: '現物・スイングトレード',
+          isLoggedIn: true,
+        };
+    saveRegisteredUser(defaultUser);
     saveUser(defaultUser);
   };
 
@@ -169,36 +205,64 @@ export function useAuth() {
    * 新規会員登録（名前・メール・アバター・パスワード）
    */
   const signUp = (name: string, email: string, avatarUrl?: string, investorStyle?: string, password?: string) => {
+    const targetEmail = email.trim() || `${name.trim().toLowerCase()}@kabu-watch.ai`;
+    const cleanName = name.trim() || '新規投資家';
+    const cleanAvatar = avatarUrl || AVATAR_PRESETS[0].url;
+
     const newUser: UserProfile = {
       id: `usr_${Date.now()}`,
-      email: email || `${name.toLowerCase()}@kabu-watch.ai`,
-      name: name.trim() || '新規投資家',
-      avatarUrl: avatarUrl || AVATAR_PRESETS[0].url,
+      email: targetEmail,
+      name: cleanName,
+      avatarUrl: cleanAvatar,
       bio: '株ウォッチAIで自分専用の持株と仮想売買を追跡中！',
       investorStyle: investorStyle || '現物長期・高配当狙い',
       password: password?.trim() || undefined,
       isLoggedIn: true,
     };
+
+    saveRegisteredUser(newUser);
     saveUser(newUser);
     return newUser;
   };
 
   /**
-   * メールアドレスでのログイン
+   * メールアドレスでのログイン（過去に登録された名前・アバターを完全復元）
    */
   const signInWithEmail = (email: string, name?: string, password?: string) => {
-    const newUser: UserProfile = {
-      id: `usr_${Date.now()}`,
-      email: email.trim(),
-      name: name?.trim() || email.split('@')[0] || '投資家メンバー',
-      avatarUrl: AVATAR_PRESETS[1].url,
-      bio: '株式投資・売買シミュレーション中',
-      investorStyle: 'グロース成長株集中',
-      password: password?.trim() || undefined,
-      isLoggedIn: true,
-    };
-    saveUser(newUser);
-    return newUser;
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUsers = getRegisteredUsers();
+    
+    // 過去に登録されたユーザー情報があるか検索
+    const foundUser = existingUsers.find(
+      (u) => (u.email && u.email.toLowerCase() === cleanEmail) || (name && u.name === name.trim())
+    );
+
+    let loggedInUser: UserProfile;
+
+    if (foundUser) {
+      // 過去の登録データ（名前、アバター、投資スタイル、自己紹介）を完全復元！
+      loggedInUser = {
+        ...foundUser,
+        name: name?.trim() || foundUser.name,
+        isLoggedIn: true,
+      };
+    } else {
+      // 初回ログインの場合は新規保存
+      loggedInUser = {
+        id: `usr_${Date.now()}`,
+        email: cleanEmail,
+        name: name?.trim() || cleanEmail.split('@')[0] || '投資家メンバー',
+        avatarUrl: AVATAR_PRESETS[0].url,
+        bio: '株式投資・売買シミュレーション中',
+        investorStyle: '現物長期・高配当狙い',
+        password: password?.trim() || undefined,
+        isLoggedIn: true,
+      };
+    }
+
+    saveRegisteredUser(loggedInUser);
+    saveUser(loggedInUser);
+    return loggedInUser;
   };
 
   /**
@@ -211,6 +275,7 @@ export function useAuth() {
       ...updates,
       isLoggedIn: true,
     };
+    saveRegisteredUser(updated);
     saveUser(updated);
     return updated;
   };

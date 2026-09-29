@@ -221,6 +221,9 @@ export default function StockCenterPage() {
               </div>
             ) : (
               <>
+                {/* 📝 外部AI見解・調査メモ（Gemini等の調査結果を貼り付けてボタン展開できるエリア：最上段） */}
+                <StockAiNotesSection ticker={ticker} stockName={stockInfo.name} />
+
                 {/* 🤖 外部AI連携バー（Gemini、ChatGPT、Claude、Perplexity等。自由に追加・削除・ON/OFF可能） */}
                 <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-[#11192e] via-[#0d1629] to-[#122238] border border-cyan-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
                   <div className="flex items-center gap-3">
@@ -281,15 +284,12 @@ export default function StockCenterPage() {
                       <div className="w-full flex items-center justify-start sm:justify-end">
                         <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/90 px-2.5 py-1 rounded-xl border border-emerald-500/40 flex items-center gap-1 animate-fade-in shadow-md">
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          質問文をコピーしました！{copiedPrompt}で送信し、得られた回答はすぐ下の「AIの回答を貼り付ける」で保存できます
+                          質問文をコピーしました！{copiedPrompt}で送信し、得られた回答はすぐ上の「AIの回答を貼り付ける」で保存できます
                         </span>
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* 📝 外部AI見解・調査メモ（Gemini等の調査結果を貼り付けてボタン展開できるエリア） */}
-                <StockAiNotesSection ticker={ticker} stockName={stockInfo.name} />
 
                 {/* Multi-perspective Tabs Area */}
                 <StockTabs
